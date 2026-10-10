@@ -388,6 +388,21 @@ class ClinicRegressionTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(self.query("SELECT hora_cita FROM citas WHERE id=2"), [("10:00",)])
 
+    def test_appointment_creation_accepts_free_slot_and_rejects_conflict(self):
+        appointment = {
+            "csrf_token": self.csrf_token,
+            "id_paciente": "1",
+            "fecha_cita": "2026-12-01",
+            "hora_cita": "09:00",
+            "descripcion": "Fictional appointment",
+        }
+        created = self.client.post('/citas/nueva', data=appointment)
+        self.assertEqual(created.status_code, 302)
+        conflict = self.client.post('/citas/nueva', data=appointment, follow_redirects=True)
+        self.assertEqual(conflict.status_code, 200)
+        self.assertIn('Ya existe una cita agendada', conflict.get_data(as_text=True))
+        self.assertEqual(self.query("SELECT COUNT(*) FROM citas WHERE fecha_cita='2026-12-01' AND hora_cita='09:00'"), [(1,)])
+
     def test_stock_adjustment_cannot_make_negative_or_change_service_stock(self):
         self.add_product(quantity=3)
         with sqlite_connection(self.db_path) as conn:
@@ -406,6 +421,45 @@ class ClinicRegressionTests(unittest.TestCase):
         self.assertEqual(self.query("SELECT cantidad FROM inventario WHERE id=1"), [(3,)])
         self.assertEqual(self.query("SELECT cantidad FROM inventario WHERE id=2"), [(None,)])
         self.assertEqual(self.query("SELECT COUNT(*) FROM movimientos_inventario"), [(0,)])
+
+    def test_trash_permanent_delete_preserves_referenced_clinical_and_stock_history(self):
+        with sqlite_connection(self.db_path) as conn:
+            patient_id = conn.execute(
+                "INSERT INTO pacientes (nombre, apellido, is_deleted) "
+                "VALUES ('Referenced', 'Patient', 1) RETURNING id"
+            ).fetchone()[0]
+            conn.execute(
+                "INSERT INTO expedientes (id_paciente, fecha_expediente) VALUES (?, '2026-10-10')",
+                (patient_id,),
+            )
+            item_id = conn.execute(
+                "INSERT INTO inventario (nombre, tipo, precio_venta, cantidad, is_deleted) "
+                "VALUES ('Referenced item', 'Producto', 10, 0, 1) RETURNING id"
+            ).fetchone()[0]
+            conn.execute(
+                "INSERT INTO movimientos_inventario (id_item, tipo_movimiento, cantidad) "
+                "VALUES (?, 'Entrada', 1)",
+                (item_id,),
+            )
+
+        paper_trash = self.client.get('/papelera')
+        self.assertEqual(paper_trash.status_code, 200)
+        patient_response = self.client.post(
+            f'/pacientes/eliminar-permanente/{patient_id}',
+            data={'csrf_token': self.csrf_token},
+            follow_redirects=True,
+        )
+        item_response = self.client.post(
+            f'/inventario/item/eliminar-permanente/{item_id}',
+            data={'csrf_token': self.csrf_token},
+            follow_redirects=True,
+        )
+        self.assertEqual(patient_response.status_code, 200)
+        self.assertEqual(item_response.status_code, 200)
+        self.assertIn('conserva expedientes, citas o ventas relacionadas', patient_response.get_data(as_text=True))
+        self.assertIn('tiene movimientos o ventas relacionadas', item_response.get_data(as_text=True))
+        self.assertEqual(self.query('SELECT COUNT(*) FROM pacientes WHERE id=?', (patient_id,)), [(1,)])
+        self.assertEqual(self.query('SELECT COUNT(*) FROM inventario WHERE id=?', (item_id,)), [(1,)])
 
     def test_upload_allowlist(self):
         self.assertTrue(clinic_app.allowed_file("scan.PDF", clinic_app.DOCUMENT_EXTENSIONS))

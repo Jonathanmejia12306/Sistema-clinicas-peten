@@ -7,6 +7,7 @@ import re
 import hmac
 import math
 import secrets
+from dotenv import load_dotenv
 from flask import Flask, abort, render_template, g, request, redirect, url_for, flash, jsonify, send_from_directory, send_file, session
 from flask.json.provider import DefaultJSONProvider
 from datetime import date, datetime, timedelta
@@ -43,6 +44,7 @@ except AttributeError:
 # =============================================================================
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+load_dotenv(os.path.join(BASE_DIR, '.env'))
 DATABASE = os.getenv('SQLITE_DB', os.getenv('DATABASE', 'clinica.db'))
 if not os.path.isabs(DATABASE):
     DATABASE = os.path.join(BASE_DIR, DATABASE)
@@ -446,6 +448,19 @@ def save_unique_file(file, folder, allowed_extensions):
     os.makedirs(folder, exist_ok=True)
     file.save(os.path.join(folder, unique_filename))
     return unique_filename
+
+
+def remove_unique_file(folder, filename):
+    if not filename or os.path.basename(filename) != filename or secure_filename(filename) != filename:
+        return
+    root = os.path.realpath(folder)
+    target = os.path.realpath(os.path.join(root, filename))
+    if os.path.dirname(target) != root:
+        return
+    try:
+        os.remove(target)
+    except FileNotFoundError:
+        pass
 
 def get_caja_abierta(db):
     return db.execute("SELECT * FROM cierres_caja WHERE estado = 'Abierta'").fetchone()
@@ -1676,8 +1691,24 @@ def restaurar_paciente(id):
 @login_required
 @admin_required
 def eliminar_paciente_permanente(id):
-    db = get_db(); db.execute("DELETE FROM pacientes WHERE id = ?", (id,)); db.commit()
-    flash('Paciente eliminado permanentemente.', 'success'); return redirect(url_for('eliminados_recientemente'))
+    db = get_db()
+    paciente = db.execute('SELECT id FROM pacientes WHERE id = ? AND is_deleted = 1', (id,)).fetchone()
+    if not paciente:
+        flash('Paciente no encontrado en la papelera.', 'error')
+        return redirect(url_for('eliminados_recientemente'))
+    referencias = db.execute(
+        "SELECT EXISTS(SELECT 1 FROM expedientes WHERE id_paciente = ?) "
+        "OR EXISTS(SELECT 1 FROM citas WHERE id_paciente = ?) "
+        "OR EXISTS(SELECT 1 FROM ventas WHERE id_paciente = ?)",
+        (id, id, id),
+    ).fetchone()[0]
+    if referencias:
+        flash('No se puede eliminar permanentemente: el paciente conserva expedientes, citas o ventas relacionadas.', 'error')
+        return redirect(url_for('eliminados_recientemente'))
+    db.execute("DELETE FROM pacientes WHERE id = ? AND is_deleted = 1", (id,))
+    db.commit()
+    flash('Paciente eliminado permanentemente.', 'success')
+    return redirect(url_for('eliminados_recientemente'))
 
 @app.route('/inventario/item/eliminar/<int:id>', methods=['POST'])
 @login_required
@@ -1697,12 +1728,28 @@ def inventario_restaurar(id):
 @login_required
 @admin_required
 def inventario_eliminar_permanente(id):
-    db = get_db(); it = db.execute("SELECT ruta_foto FROM inventario WHERE id = ?", (id,)).fetchone()
-    if it and it['ruta_foto']:
-        try: os.remove(os.path.join(app.config['PRODUCT_UPLOAD_FOLDER'], it['ruta_foto']))
-        except: pass
-    db.execute('DELETE FROM inventario WHERE id = ?', (id,)); db.commit()
-    flash('Ítem borrado permanentemente.', 'success'); return redirect(url_for('eliminados_recientemente'))
+    db = get_db()
+    item = db.execute(
+        "SELECT ruta_foto FROM inventario WHERE id = ? AND is_deleted = 1",
+        (id,),
+    ).fetchone()
+    if not item:
+        flash('Ítem no encontrado en la papelera.', 'error')
+        return redirect(url_for('eliminados_recientemente'))
+    referencias = db.execute(
+        "SELECT EXISTS(SELECT 1 FROM movimientos_inventario WHERE id_item = ?) "
+        "OR EXISTS(SELECT 1 FROM ventas_detalle WHERE id_item_inventario = ?)",
+        (id, id),
+    ).fetchone()[0]
+    if referencias:
+        flash('No se puede eliminar permanentemente: el ítem tiene movimientos o ventas relacionadas.', 'error')
+        return redirect(url_for('eliminados_recientemente'))
+    db.execute('DELETE FROM inventario WHERE id = ? AND is_deleted = 1', (id,))
+    db.commit()
+    if item['ruta_foto']:
+        remove_unique_file(app.config['PRODUCT_UPLOAD_FOLDER'], item['ruta_foto'])
+    flash('Ítem borrado permanentemente.', 'success')
+    return redirect(url_for('eliminados_recientemente'))
 
 @app.route('/documento/eliminar/<int:id_documento>', methods=['POST'])
 @login_required

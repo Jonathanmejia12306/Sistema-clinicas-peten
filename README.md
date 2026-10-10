@@ -4,7 +4,7 @@ Aplicación Flask para pacientes, expedientes, citas, inventario, ventas, caja, 
 
 ## Configuración
 
-Usa Python del entorno virtual y configura un archivo local `.env` a partir de `.env.example`. No publiques `.env` ni uses las credenciales de ejemplo. PostgreSQL se selecciona con `DATABASE_URL`; si está vacío, la app usa SQLite en `SQLITE_DB`.
+Usa Python del entorno virtual y configura un archivo local `.env` a partir de `.env.example`. Flask carga ese archivo al iniciar la app. No publiques `.env` ni uses las credenciales de ejemplo. PostgreSQL se selecciona con `DATABASE_URL`; si está vacío, la app usa SQLite en `SQLITE_DB`.
 
 Variables importantes:
 
