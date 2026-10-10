@@ -159,7 +159,7 @@
                         <tr class="hover:bg-gray-50">
                             <td class="py-3 px-4 whitespace-nowrap">
                                 <div class="text-sm font-bold text-gray-700">{{ cita.hora_cita }}</div>
-                                <div class="text-xs text-gray-500">{{ cita.fecha_cita }}</div>
+                                <div class="text-xs text-gray-500">{{ cita.fecha_cita|db_datetime(true) }}</div>
                             </td>
                             <td class="py-3 px-4 font-medium text-petroleo">
                                 {{ cita.nombre }} {{ cita.apellido }}

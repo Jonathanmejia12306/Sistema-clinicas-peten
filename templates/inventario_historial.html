@@ -141,17 +141,17 @@
                             cantidadSign = '-';
                         } else {
                             badgeHtml = `<span class="px-2 py-1 text-xs font-bold rounded-full bg-gray-100 text-gray-600">
-                                ${tipo}
+                                ${escapeHtml(tipo)}
                             </span>`;
                             cantidadClass = 'text-gray-600';
                         }
                         
                         row.innerHTML = `
-                            <td class="py-4 px-6 text-sm text-gray-500 whitespace-nowrap">${mov.fecha.substring(0, 16)}</td>
-                            <td class="py-4 px-6 font-semibold text-gray-700">${mov.nombre_item}</td>
+                            <td class="py-4 px-6 text-sm text-gray-500 whitespace-nowrap">${escapeHtml(mov.fecha.substring(0, 16))}</td>
+                            <td class="py-4 px-6 font-semibold text-gray-700">${escapeHtml(mov.nombre_item)}</td>
                             <td class="py-4 px-6">${badgeHtml}</td>
                             <td class="py-4 px-6 font-bold text-lg ${cantidadClass}">${cantidadSign}${mov.cantidad}</td>
-                            <td class="py-4 px-6 text-sm text-gray-500 italic">${mov.descripcion || '-'}</td>
+                            <td class="py-4 px-6 text-sm text-gray-500 italic">${escapeHtml(mov.descripcion || '-')}</td>
                         `;
                         historialTbody.appendChild(row);
                     });

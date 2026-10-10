@@ -300,7 +300,7 @@
                     data.forEach(p => {
                         const d = document.createElement('div');
                         d.className = 'search-result-item';
-                        d.innerHTML = `<span>${p.nombre} ${p.apellido}</span>`;
+                        d.innerHTML = `<span>${escapeHtml(p.nombre)} ${escapeHtml(p.apellido)}</span>`;
                         d.onclick = () => {
                             patientSearchInput.value = `${p.nombre} ${p.apellido}`;
                             patientIdInput.value = p.id;
@@ -356,7 +356,7 @@
 
                     d.innerHTML = `
                         <div class="flex flex-col gap-1">
-                            <span class="item-nombre">${item.nombre}</span>
+                            <span class="item-nombre">${escapeHtml(item.nombre)}</span>
                             <div class="flex gap-2 flex-wrap">
                                 ${stockTag}
                                 ${costTag}
@@ -400,7 +400,7 @@
             const tr = document.createElement('tr');
             tr.innerHTML = `
                 <td class="p-4">
-                    <span class="block font-medium">${item.nombre}</span>
+                    <span class="block font-medium">${escapeHtml(item.nombre)}</span>
                     <input type="hidden" name="item_ids[]" value="${item.id}">
                 </td>
                 <td class="p-4 text-center">

@@ -121,7 +121,7 @@
                     <tr class="hover:bg-gray-50 transition-colors">
                         <td class="py-4 px-6 font-bold text-gray-400">#{{ exp.id_expediente }}</td>
                         <td class="py-4 px-6 text-gray-700 whitespace-nowrap">
-                            <i class="far fa-calendar-alt mr-2 text-gray-400"></i>{{ exp.fecha_expediente }}
+                            <i class="far fa-calendar-alt mr-2 text-gray-400"></i>{{ exp.fecha_expediente|db_datetime(true) }}
                         </td>
                         <td class="py-4 px-6 text-gray-600">
                             {{ exp.motivo_consulta | truncate(80) if exp.motivo_consulta else 'Sin motivo registrado' }}
@@ -173,9 +173,9 @@
                         row.innerHTML = `
                             <td class="py-4 px-6 font-bold text-gray-400">#${exp.id_expediente}</td>
                             <td class="py-4 px-6 text-gray-700 whitespace-nowrap">
-                                <i class="far fa-calendar-alt mr-2 text-gray-400"></i>${exp.fecha_expediente}
+                                <i class="far fa-calendar-alt mr-2 text-gray-400"></i>${escapeHtml(exp.fecha_expediente)}
                             </td>
-                            <td class="py-4 px-6 text-gray-600">${motivo}</td>
+                            <td class="py-4 px-6 text-gray-600">${escapeHtml(motivo)}</td>
                             <td class="py-4 px-6 text-center">
                                 <a href="${editUrl}" class="bg-teal-50 text-teal-700 border border-teal-200 px-4 py-1.5 rounded-md text-sm font-bold hover:bg-teal-600 hover:text-white transition shadow-sm inline-flex items-center">
                                     <i class="far fa-eye mr-2"></i>Ver / Editar

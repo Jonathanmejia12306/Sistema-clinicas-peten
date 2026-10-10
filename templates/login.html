@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>Iniciar Sesión - Clínica</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
@@ -50,6 +51,7 @@
             {% endwith %}
 
             <form method="POST" action="{{ url_for('login') }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <div class="mb-5">
                     <label class="block text-gray-600 text-xs font-bold mb-2 uppercase tracking-wide" for="username">Usuario</label>
                     <input class="w-full px-4 py-2 rounded border border-gray-300 focus:outline-none focus:border-clinica-primary focus:ring-1 focus:ring-clinica-primary transition" 

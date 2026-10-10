@@ -311,11 +311,11 @@
                         }
 
                         accionesHtml = `
-                            <button onclick="abrirModalAbonar('${g.id}', '${g.descripcion.replace(/'/g, "\\'")}', '${g.monto}', '${saldo}')"
+                            <button type="button" data-action="abonar" data-id="${escapeHtml(g.id)}" data-descripcion="${escapeHtml(g.descripcion)}" data-monto="${g.monto}" data-saldo="${saldo}"
                                     class="bg-blue-50 text-blue-600 hover:bg-blue-500 hover:text-white border border-blue-200 w-8 h-8 rounded-full flex items-center justify-center transition mr-1" title="Registrar Abono">
                                 <i class="fas fa-hand-holding-usd"></i>
                             </button>
-                            <button onclick="abrirModalPagar('${g.id}', '${g.descripcion.replace(/'/g, "\\'")}', '${saldo}')"
+                            <button type="button" data-action="pagar" data-id="${escapeHtml(g.id)}" data-descripcion="${escapeHtml(g.descripcion)}" data-saldo="${saldo}"
                                     class="bg-green-50 text-green-600 hover:bg-green-500 hover:text-white border border-green-200 w-8 h-8 rounded-full flex items-center justify-center transition mr-1" title="Pagar saldo total">
                                 <i class="fas fa-check"></i>
                             </button>
@@ -337,18 +337,18 @@
                             if (diffDays < 0) { colorVenc = "text-red-600 font-bold"; icon = '<i class="fas fa-exclamation-circle mr-1"></i>'; }
                             else if (diffDays <= 15) { colorVenc = "text-orange-600 font-bold"; icon = '<i class="fas fa-clock mr-1"></i>'; }
                             
-                            vencimientoHtml = `<span class="${colorVenc} text-sm">${icon}${g.fecha_vencimiento}</span>`;
+                            vencimientoHtml = `<span class="${colorVenc} text-sm">${icon}${escapeHtml(g.fecha_vencimiento)}</span>`;
                         } else {
                             vencimientoHtml = `<span class="text-gray-400 text-sm">-</span>`;
                         }
                         
                     } else {
                         estadoHtml = `<span class="bg-green-50 text-green-700 px-3 py-1 rounded-full text-xs font-bold border border-green-100">Pagado</span>`;
-                        vencimientoHtml = `<span class="text-xs text-green-600"><i class="fas fa-calendar-check mr-1"></i>${g.fecha_pago || ''}</span>`;
+                        vencimientoHtml = `<span class="text-xs text-green-600"><i class="fas fa-calendar-check mr-1"></i>${escapeHtml(g.fecha_pago || '')}</span>`;
                         
                         if (g.comprobante_ruta) {
                             accionesHtml = `
-                                <a href="/uploads/comprobantes/${g.comprobante_ruta}" target="_blank" class="text-blue-500 hover:text-blue-700 text-lg" title="Ver Comprobante">
+                                <a href="/uploads/comprobantes/${escapeHtml(g.comprobante_ruta)}" target="_blank" class="text-blue-500 hover:text-blue-700 text-lg" title="Ver Comprobante">
                                     <i class="fas fa-paperclip"></i>
                                 </a>
                             `;
@@ -364,8 +364,8 @@
                     }
 
                     tr.innerHTML = `
-                        <td class="py-4 px-6 font-medium text-gray-800">${g.descripcion}</td>
-                        <td class="py-4 px-6 text-gray-500 text-sm">${g.proveedor || '-'}</td>
+                        <td class="py-4 px-6 font-medium text-gray-800">${escapeHtml(g.descripcion)}</td>
+                        <td class="py-4 px-6 text-gray-500 text-sm">${escapeHtml(g.proveedor || '-')}</td>
                         <td class="py-4 px-6 text-center whitespace-nowrap">${vencimientoHtml}</td>
                         <td class="py-4 px-6 text-right font-bold text-gray-800">${montoHtml}</td>
                         <td class="py-4 px-6 text-center">${estadoHtml}</td>
@@ -380,6 +380,13 @@
     searchInput.addEventListener('input', cargarGastos);
     filtroEstado.addEventListener('change', cargarGastos);
     filtroProximos.addEventListener('change', cargarGastos);
+    tablaGastos.addEventListener('click', (event) => {
+        const button = event.target.closest('button[data-action]');
+        if (!button) return;
+        const { action, id, descripcion, monto, saldo } = button.dataset;
+        if (action === 'abonar') abrirModalAbonar(id, descripcion, monto, saldo);
+        if (action === 'pagar') abrirModalPagar(id, descripcion, saldo);
+    });
 
     document.addEventListener('DOMContentLoaded', () => {
         cargarGastos();
@@ -432,8 +439,8 @@
                 cont.innerHTML = data.map(a => `
                     <div class="flex justify-between items-center py-2">
                         <div>
-                            <p class="font-medium text-gray-700">Q${a.monto.toFixed(2)} <span class="text-xs text-gray-400 font-normal">(${a.metodo_pago})</span></p>
-                            <p class="text-xs text-gray-400">${a.fecha_abono}</p>
+                            <p class="font-medium text-gray-700">Q${a.monto.toFixed(2)} <span class="text-xs text-gray-400 font-normal">(${escapeHtml(a.metodo_pago)})</span></p>
+                            <p class="text-xs text-gray-400">${escapeHtml(a.fecha_abono)}</p>
                         </div>
                         <p class="text-xs text-gray-500">Saldo: Q${(a.saldo_actual_snapshot || 0).toFixed(2)}</p>
                     </div>

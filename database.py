@@ -1,18 +1,11 @@
 import sqlite3
 import os
+from pathlib import Path
 from werkzeug.security import generate_password_hash
 
-DATABASE_NAME = 'clinica.db'
+DATABASE_NAME = Path(__file__).resolve().parent / 'clinica.db'
 
 def crear_base_de_datos():
-    # Eliminamos la base de datos anterior solo si estamos reiniciando el sistema
-    if os.path.exists(DATABASE_NAME):
-        try:
-            os.remove(DATABASE_NAME)
-            print(f"Archivo anterior '{DATABASE_NAME}' eliminado para limpieza.")
-        except Exception as e:
-            print(f"Advertencia: No se pudo borrar el archivo: {e}")
-
     conn = sqlite3.connect(DATABASE_NAME)
     cursor = conn.cursor()
     print("Creando estructura de base de datos...")
@@ -144,16 +137,26 @@ def crear_base_de_datos():
         cursor.execute("CREATE TABLE IF NOT EXISTS gastos (id INTEGER PRIMARY KEY AUTOINCREMENT, descripcion TEXT NOT NULL, proveedor TEXT, monto REAL NOT NULL, fecha_emision DATE, fecha_vencimiento DATE, estado TEXT DEFAULT 'Pendiente', fecha_pago DATE, comprobante_ruta TEXT, saldo_pendiente REAL, creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP);")
         cursor.execute("CREATE TABLE IF NOT EXISTS abonos_gastos (id INTEGER PRIMARY KEY AUTOINCREMENT, id_gasto INTEGER NOT NULL, fecha_abono TIMESTAMP DEFAULT CURRENT_TIMESTAMP, monto REAL NOT NULL, metodo_pago TEXT NOT NULL, referencia_pago TEXT, saldo_actual_snapshot REAL, notas TEXT, FOREIGN KEY (id_gasto) REFERENCES gastos (id));")
 
-        # DATOS INICIALES - Contraseña cambiada a 46663627
-        password = generate_password_hash("46663627")
-        cursor.execute("INSERT INTO usuarios (username, password, nombre, rol) VALUES (?, ?, ?, ?)", ('admin', password, 'Administrador', 'admin'))
-        cursor.execute("INSERT INTO pacientes (nombre, apellido, fecha_nacimiento, telefono) VALUES (?, ?, ?, ?)", ('Cliente', 'Mostrador', '2000-01-01', '00000000'))
+        initial_admin_password = os.getenv('INITIAL_ADMIN_PASSWORD')
+        if initial_admin_password:
+            cursor.execute(
+                "INSERT OR IGNORE INTO usuarios (username, password, nombre, rol) VALUES (?, ?, ?, ?)",
+                ('admin', generate_password_hash(initial_admin_password), 'Administrador', 'admin'),
+            )
+        elif not cursor.execute("SELECT 1 FROM usuarios WHERE username = 'admin'").fetchone():
+            print("Aviso: define INITIAL_ADMIN_PASSWORD para crear el usuario administrador inicial.")
+
+        if not cursor.execute('SELECT 1 FROM pacientes LIMIT 1').fetchone():
+            cursor.execute(
+                "INSERT INTO pacientes (nombre, apellido, fecha_nacimiento, telefono) VALUES (?, ?, ?, ?)",
+                ('Cliente', 'Mostrador', '2000-01-01', '00000000'),
+            )
 
         conn.commit()
-        print("✅ Base de datos creada exitosamente.")
+        print("Base de datos creada exitosamente.")
 
     except Exception as e:
-        print(f"❌ Error al crear base de datos: {e}")
+        print(f"Error al crear base de datos: {e}")
         conn.rollback()
     finally:
         conn.close()

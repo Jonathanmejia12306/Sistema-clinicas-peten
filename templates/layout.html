@@ -3,6 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <script>
+        window.escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (character) => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+        })[character]);
+    </script>
     <title>Clínica - {% block title %}{% endblock %}</title>
     
     <!-- Tailwind CSS -->
@@ -141,9 +147,11 @@
                 </div>
             </div>
             {% endif %}
-            <a href="{{ url_for('logout') }}" class="flex items-center justify-center py-2 px-4 rounded bg-red-500/10 hover:bg-red-500 text-teal-100 hover:text-white transition duration-200 text-sm font-medium border border-red-500/30">
-                <i class="fas fa-sign-out-alt mr-2"></i> Cerrar Sesión
-            </a>
+            <form method="POST" action="{{ url_for('logout') }}">
+                <button type="submit" class="w-full flex items-center justify-center py-2 px-4 rounded bg-red-500/10 hover:bg-red-500 text-teal-100 hover:text-white transition duration-200 text-sm font-medium border border-red-500/30">
+                    <i class="fas fa-sign-out-alt mr-2"></i> Cerrar Sesión
+                </button>
+            </form>
         </div>
     </aside>
 
@@ -187,6 +195,34 @@
             function toggleSidebar() { sidebar.classList.toggle('-translate-x-full'); overlay.classList.toggle('hidden'); }
             btn.addEventListener('click', toggleSidebar); overlay.addEventListener('click', toggleSidebar);
         }
+    </script>
+    <script>
+        (() => {
+            const token = document.querySelector('meta[name="csrf-token"]')?.content;
+            if (!token) return;
+
+            const addToken = (form) => {
+                const method = (form.getAttribute('method') || 'GET').toUpperCase();
+                if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) return;
+                if (form.querySelector('input[name="csrf_token"]')) return;
+                const input = document.createElement('input');
+                input.type = 'hidden';
+                input.name = 'csrf_token';
+                input.value = token;
+                form.appendChild(input);
+            };
+
+            document.querySelectorAll('form').forEach(addToken);
+            document.addEventListener('submit', (event) => addToken(event.target), true);
+            new MutationObserver((records) => {
+                for (const record of records) {
+                    for (const node of record.addedNodes) {
+                        if (node instanceof HTMLFormElement) addToken(node);
+                        else if (node instanceof Element) node.querySelectorAll('form').forEach(addToken);
+                    }
+                }
+            }).observe(document.body, { childList: true, subtree: true });
+        })();
     </script>
 </body>
 </html>

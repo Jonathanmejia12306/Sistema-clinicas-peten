@@ -432,7 +432,7 @@
                         }
 
                         // HTML Ref
-                        let refHtml = v.referencia_pago ? `<div class="text-xs text-gray-500 mt-1 font-mono">Ref: ${v.referencia_pago}</div>` : '';
+                        let refHtml = v.referencia_pago ? `<div class="text-xs text-gray-500 mt-1 font-mono">Ref: ${escapeHtml(v.referencia_pago)}</div>` : '';
 
                         // Botón Abonar
                         let btnAbonar = '';
@@ -448,9 +448,9 @@
                         row.innerHTML = `
                             <td class="py-4 px-6">${tipoHtml} ${tagCancelada}</td>
                             <td class="py-4 px-6 text-gray-600 text-sm">${fecha}</td>
-                            <td class="py-4 px-6 font-medium text-gray-800 ${textDecoration}">${v.nombre} ${v.apellido}</td>
+                            <td class="py-4 px-6 font-medium text-gray-800 ${textDecoration}">${escapeHtml(v.nombre)} ${escapeHtml(v.apellido)}</td>
                             <td class="py-4 px-6">
-                                <span class="bg-gray-100 text-gray-700 px-2 py-1 rounded text-xs border border-gray-200 font-medium">${v.metodo_pago}</span>
+                                <span class="bg-gray-100 text-gray-700 px-2 py-1 rounded text-xs border border-gray-200 font-medium">${escapeHtml(v.metodo_pago)}</span>
                                 ${refHtml}
                             </td>
                             <td class="py-4 px-6">${estadoHtml}</td>

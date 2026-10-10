@@ -183,7 +183,7 @@
                 <!-- Fecha Nacimiento -->
                 <div>
                     <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Fecha Nacimiento</label>
-                    <input type="date" name="p_fecha_nacimiento" value="{{ paciente.fecha_nacimiento }}" class="input-custom bg-white">
+                    <input type="date" name="p_fecha_nacimiento" value="{{ paciente.fecha_nacimiento|db_datetime(true) }}" class="input-custom bg-white">
                 </div>
                 <!-- Teléfono -->
                 <div>
@@ -201,7 +201,7 @@
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
                 <label for="fecha_expediente" class="block text-gray-700 font-semibold mb-1">Fecha del Expediente</label>
-                <input type="date" id="fecha_expediente" name="fecha_expediente" value="{{ expediente.fecha_expediente if expediente else today.strftime('%Y-%m-%d') }}" class="input-custom" required>
+                <input type="date" id="fecha_expediente" name="fecha_expediente" value="{{ expediente.fecha_expediente|db_datetime(true) if expediente else today.strftime('%Y-%m-%d') }}" class="input-custom" required>
             </div>
             <div class="md:col-span-2">
                 <label for="motivo_consulta" class="block text-gray-700 font-semibold mb-1">Motivo de Consulta</label>
@@ -308,7 +308,7 @@
     <div class="space-y-4">
         {% for sesion in sesiones %}
         <div class="border-l-4 border-salvia pl-4 py-2">
-            <p class="text-sm text-gray-500 font-bold mb-1"><i class="far fa-calendar-alt mr-1"></i>{{ sesion.fecha_sesion }}</p>
+            <p class="text-sm text-gray-500 font-bold mb-1"><i class="far fa-calendar-alt mr-1"></i>{{ sesion.fecha_sesion|db_datetime(true) }}</p>
             <div class="bg-white p-3 rounded shadow-sm border border-gray-100">
                 <p class="text-gray-800 font-medium"><span class="text-petroleo font-bold">Tx:</span> {{ sesion.tratamiento }}</p>
                 {% if sesion.resultados %}
@@ -354,7 +354,7 @@
                     <a href="{{ url_for('uploaded_file', filename=doc.ruta_archivo) }}" target="_blank" class="font-medium text-gray-700 hover:text-petroleo truncate block">
                         {{ doc.nombre_archivo }}
                     </a>
-                    <span class="text-xs text-gray-500">{{ doc.fecha_subida[:10] }}</span>
+                    <span class="text-xs text-gray-500">{{ doc.fecha_subida|db_datetime(true) }}</span>
                 </div>
             </div>
             <form action="{{ url_for('eliminar_documento', id_documento=doc.id_documento) }}" method="POST" onsubmit="return confirm('¿Mover este documento a la papelera?');">

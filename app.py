@@ -4,7 +4,11 @@ import uuid
 import time
 import io
 import re
-from flask import Flask, render_template, g, request, redirect, url_for, flash, jsonify, send_from_directory, send_file
+import hmac
+import math
+import secrets
+from flask import Flask, abort, render_template, g, request, redirect, url_for, flash, jsonify, send_from_directory, send_file, session
+from flask.json.provider import DefaultJSONProvider
 from datetime import date, datetime, timedelta
 from werkzeug.utils import secure_filename
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -21,6 +25,10 @@ except Exception:
     psycopg2 = None
     RealDictCursor = None
 
+DATABASE_INTEGRITY_ERRORS = (sqlite3.IntegrityError,)
+if psycopg2 is not None:
+    DATABASE_INTEGRITY_ERRORS += (psycopg2.IntegrityError,)
+
 # =============================================================================
 # --- 0. CONFIGURACIÓN DE ZONA HORARIA (GUATEMALA) ---
 # =============================================================================
@@ -34,13 +42,27 @@ except AttributeError:
 # --- 1. CONFIGURACIÓN DE LA APLICACIÓN ---
 # =============================================================================
 
-DATABASE = os.getenv('DATABASE', 'clinica.db')
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DATABASE = os.getenv('SQLITE_DB', os.getenv('DATABASE', 'clinica.db'))
+if not os.path.isabs(DATABASE):
+    DATABASE = os.path.join(BASE_DIR, DATABASE)
 DATABASE_URL = os.getenv('DATABASE_URL')
-UPLOAD_FOLDER = 'uploads'
+UPLOAD_FOLDER = os.path.join(BASE_DIR, 'uploads')
 PRODUCT_UPLOAD_FOLDER = os.path.join(UPLOAD_FOLDER, 'productos')
 EXPENSE_UPLOAD_FOLDER = os.path.join(UPLOAD_FOLDER, 'comprobantes_gastos')
+DOCUMENT_EXTENSIONS = {'pdf', 'png', 'jpg', 'jpeg', 'webp'}
+IMAGE_EXTENSIONS = {'png', 'jpg', 'jpeg', 'webp'}
+
+class ClinicJSONProvider(DefaultJSONProvider):
+    def default(self, value):
+        if isinstance(value, (date, datetime)):
+            return value.isoformat()
+        return super().default(value)
+
 
 app = Flask(__name__)
+app.json_provider_class = ClinicJSONProvider
+app.json = ClinicJSONProvider(app)
 
 
 def translate_sqlite_to_postgres(query):
@@ -85,9 +107,34 @@ class CompatRow(dict):
 class CompatCursor:
     def __init__(self, cursor):
         self._cursor = cursor
+        self._lastrowid = None
 
     def execute(self, query, params=()):
-        return self._cursor.execute(query, params)
+        self._lastrowid = None
+        sql = translate_sqlite_to_postgres(query)
+        insert_match = re.match(r'\s*INSERT\s+INTO\s+"?([A-Za-z_][A-Za-z0-9_]*)"?', query, re.IGNORECASE)
+        primary_keys = {
+            'usuarios': 'id', 'pacientes': 'id', 'expedientes': 'id_expediente',
+            'sesiones': 'id_sesion', 'documentos': 'id_documento', 'inventario': 'id',
+            'movimientos_inventario': 'id', 'citas': 'id', 'ventas': 'id',
+            'ventas_detalle': 'id', 'abonos': 'id', 'cierres_caja': 'id',
+            'gastos': 'id', 'abonos_gastos': 'id',
+        }
+        if insert_match and 'RETURNING' not in sql.upper():
+            table = insert_match.group(1).lower()
+            primary_key = primary_keys.get(table)
+            if primary_key:
+                sql += f' RETURNING {primary_key}'
+                self._cursor.execute(sql, params)
+                row = self._cursor.fetchone()
+                self._lastrowid = row[primary_key] if row else None
+                return self
+        self._cursor.execute(sql, params)
+        return self
+
+    @property
+    def lastrowid(self):
+        return self._lastrowid
 
     def fetchone(self):
         row = self._cursor.fetchone()
@@ -135,6 +182,11 @@ class CompatDB:
     def commit(self):
         self.conn.commit()
 
+    def cursor(self):
+        if not DATABASE_URL or psycopg2 is None:
+            return self.conn.cursor()
+        return CompatCursor(self.conn.cursor(cursor_factory=RealDictCursor))
+
     def close(self):
         if self.cursor_obj is not None:
             self.cursor_obj.close()
@@ -148,17 +200,64 @@ class CompatDB:
 
 
 def connect_db():
-    if DATABASE_URL and psycopg2 is not None:
+    if DATABASE_URL:
+        if psycopg2 is None:
+            raise RuntimeError('DATABASE_URL is set but psycopg2 is not installed.')
         conn = psycopg2.connect(DATABASE_URL)
         return CompatDB(conn)
     conn = sqlite3.connect(DATABASE)
     conn.row_factory = sqlite3.Row
+    conn.execute('PRAGMA foreign_keys = ON')
     return conn
-app.config['SECRET_KEY'] = 'clave_maestra_clinica_46663627'
+APP_ENV = os.getenv('APP_ENV', 'development').lower()
+SECRET_KEY = os.getenv('SECRET_KEY')
+if APP_ENV == 'production' and not SECRET_KEY:
+    raise RuntimeError('SECRET_KEY must be configured when APP_ENV=production.')
+
+app.config['SECRET_KEY'] = SECRET_KEY or secrets.token_hex(32)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['PRODUCT_UPLOAD_FOLDER'] = PRODUCT_UPLOAD_FOLDER
 app.config['EXPENSE_UPLOAD_FOLDER'] = EXPENSE_UPLOAD_FOLDER
-app.config['MAX_CONTENT_LENGTH'] = None
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config['SESSION_COOKIE_SECURE'] = (
+    APP_ENV == 'production'
+    or os.getenv('COOKIE_SECURE', '').lower() in {'1', 'true', 'yes'}
+)
+
+
+def csrf_token():
+    token = session.get('_csrf_token')
+    if token is None:
+        token = secrets.token_urlsafe(32)
+        session['_csrf_token'] = token
+    return token
+
+
+@app.context_processor
+def inject_csrf_token():
+    return {'csrf_token': csrf_token}
+
+
+@app.before_request
+def protect_csrf():
+    if request.method not in {'POST', 'PUT', 'PATCH', 'DELETE'}:
+        return
+    expected = session.get('_csrf_token')
+    supplied = request.form.get('csrf_token') or request.headers.get('X-CSRFToken')
+    if not expected or not supplied or not hmac.compare_digest(expected, supplied):
+        abort(400, description='CSRF token missing or invalid.')
+
+
+@app.after_request
+def set_security_headers(response):
+    response.headers.setdefault('X-Content-Type-Options', 'nosniff')
+    response.headers.setdefault('X-Frame-Options', 'DENY')
+    response.headers.setdefault('Referrer-Policy', 'strict-origin-when-cross-origin')
+    if current_user.is_authenticated:
+        response.headers['Cache-Control'] = 'no-store'
+    return response
 
 # --- CONFIGURACIÓN DE LOGIN ---
 login_manager = LoginManager()
@@ -224,7 +323,7 @@ def login():
             flash('Usuario o contraseña incorrectos', 'error')
     return render_template('login.html')
 
-@app.route('/logout')
+@app.route('/logout', methods=['POST'])
 @login_required
 def logout():
     logout_user()
@@ -243,10 +342,13 @@ def lista_usuarios():
 @login_required
 @admin_required
 def nuevo_usuario():
-    username = request.form.get('username')
-    password = request.form.get('password')
-    nombre = request.form.get('nombre')
+    username = (request.form.get('username') or '').strip()
+    password = request.form.get('password') or ''
+    nombre = (request.form.get('nombre') or '').strip()
     rol = request.form.get('rol')
+    if not username or not password or not nombre or rol not in {'usuario', 'admin'}:
+        flash('Complete los datos y seleccione un rol válido.', 'error')
+        return redirect(url_for('lista_usuarios'))
     hashed_pw = generate_password_hash(password)
     db = get_db()
     try:
@@ -254,8 +356,13 @@ def nuevo_usuario():
                    (username, hashed_pw, nombre, rol))
         db.commit()
         flash("Usuario creado con éxito.", "success")
-    except sqlite3.IntegrityError:
+    except DATABASE_INTEGRITY_ERRORS:
+        db.rollback()
         flash("El nombre de usuario ya existe.", "error")
+    except Exception:
+        db.rollback()
+        app.logger.exception('Failed to create user')
+        flash('No se pudo crear el usuario.', 'error')
     return redirect(url_for('lista_usuarios'))
 
 @app.route('/usuarios/eliminar/<int:id>', methods=['POST'])
@@ -277,6 +384,13 @@ def get_db():
         g.db = connect_db()
     return g.db
 
+
+def acquire_transaction_lock(db, lock_name):
+    if DATABASE_URL:
+        db.execute("SELECT pg_advisory_xact_lock(hashtext(?)::bigint)", (lock_name,))
+    else:
+        db.execute('BEGIN IMMEDIATE')
+
 @app.teardown_appcontext
 def close_db(exception):
     db = g.pop('db', None)
@@ -286,26 +400,55 @@ def close_db(exception):
 def calcular_edad(f):
     if not f: return None
     try:
-        fn = datetime.strptime(f, '%Y-%m-%d').date()
+        fn = date.fromisoformat(iso_date_value(f))
         hoy = date.today()
         return hoy.year - fn.year - ((hoy.month, hoy.day) < (fn.month, fn.day))
     except: return None
 
-def allowed_file(filename):
-    return filename != ''
 
-def save_unique_file(file, folder):
+def iso_date_value(value):
+    if isinstance(value, datetime):
+        return value.date().isoformat()
+    if isinstance(value, date):
+        return value.isoformat()
+    if value:
+        return str(value)[:10]
+    return None
+
+
+@app.template_filter('db_datetime')
+def format_db_datetime(value, date_only=False, time_only=False):
+    if value is None:
+        return ''
+    date_format = '%Y-%m-%d' if date_only else '%H:%M' if time_only else '%Y-%m-%d %H:%M'
+    if isinstance(value, (date, datetime)):
+        return value.strftime(date_format)
+    text = str(value)
+    if date_only:
+        return text[:10]
+    if time_only:
+        return text[11:16] if len(text) >= 16 else ''
+    return text[:16]
+
+def allowed_file(filename, allowed_extensions):
+    if not filename or '.' not in filename:
+        return False
+    safe_filename = secure_filename(filename)
+    if not safe_filename or '.' not in safe_filename:
+        return False
+    return safe_filename.rsplit('.', 1)[1].lower() in allowed_extensions
+
+def save_unique_file(file, folder, allowed_extensions):
+    if not allowed_file(file.filename, allowed_extensions):
+        raise ValueError('El tipo de archivo no está permitido.')
     original_filename = secure_filename(file.filename)
-    extension = original_filename.rsplit('.', 1)[1].lower() if '.' in original_filename else ''
     unique_filename = f"{uuid.uuid4().hex}_{original_filename}"
+    os.makedirs(folder, exist_ok=True)
     file.save(os.path.join(folder, unique_filename))
     return unique_filename
 
 def get_caja_abierta(db):
-    try:
-        return db.execute("SELECT * FROM cierres_caja WHERE estado = 'Abierta'").fetchone()
-    except sqlite3.OperationalError:
-        return None
+    return db.execute("SELECT * FROM cierres_caja WHERE estado = 'Abierta'").fetchone()
 
 def procesar_formulario_inventario(conn, item_id=None):
     nombre = request.form.get('nombre')
@@ -322,7 +465,7 @@ def procesar_formulario_inventario(conn, item_id=None):
     if 'foto' in request.files:
         file = request.files['foto']
         if file.filename != '':
-            ruta_foto = save_unique_file(file, app.config['PRODUCT_UPLOAD_FOLDER'])
+            ruta_foto = save_unique_file(file, app.config['PRODUCT_UPLOAD_FOLDER'], IMAGE_EXTENSIONS)
 
     precio_compra = float(precio_compra) if precio_compra else None
     porcentaje_ganancia = float(porcentaje_ganancia) if porcentaje_ganancia else None
@@ -377,7 +520,8 @@ def dashboard():
         stats['inv_costo'] = costo_total
         stats['inv_venta'] = venta_total
         stats['inv_ganancia'] = venta_total - costo_total
-    except Exception as e:
+    except Exception:
+        app.logger.exception('Dashboard query failed')
         stats = {'total_pacientes': 0, 'ventas_hoy': 0, 'bajo_stock': 0, 'por_vencer': 0, 'inv_costo': 0, 'inv_venta': 0, 'inv_ganancia': 0}
         proximas_citas = []
     return render_template('index.html', active_page='dashboard', stats=stats, proximas_citas=proximas_citas)
@@ -431,6 +575,7 @@ def api_inventario_buscar():
     items = []
     for item in items_db:
         item_dict = dict(item)
+        item_dict['fecha_vencimiento'] = iso_date_value(item_dict.get('fecha_vencimiento'))
         precio_venta = item_dict.get('precio_venta') or 0
         precio_compra = item_dict.get('precio_compra') or 0
         cantidad = item_dict.get('cantidad') or 0
@@ -596,17 +741,23 @@ def api_pagos_buscar():
 @app.route('/uploads/<path:filename>')
 @login_required
 def uploaded_file(filename):
-    return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
+    if not allowed_file(filename, DOCUMENT_EXTENSIONS):
+        abort(404)
+    return send_from_directory(app.config['UPLOAD_FOLDER'], filename, as_attachment=True)
 
 @app.route('/uploads/productos/<filename>')
 @login_required
 def uploaded_product_file(filename):
+    if not allowed_file(filename, IMAGE_EXTENSIONS):
+        abort(404)
     return send_from_directory(app.config['PRODUCT_UPLOAD_FOLDER'], filename)
 
 @app.route('/uploads/comprobantes/<filename>')
 @login_required
 def uploaded_expense_file(filename):
-    return send_from_directory(app.config['EXPENSE_UPLOAD_FOLDER'], filename)
+    if not allowed_file(filename, DOCUMENT_EXTENSIONS):
+        abort(404)
+    return send_from_directory(app.config['EXPENSE_UPLOAD_FOLDER'], filename, as_attachment=True)
 
 # =============================================================================
 # --- 7. MÓDULOS DE LA APLICACIÓN ---
@@ -702,14 +853,22 @@ def subir_documento(id_expediente):
         return redirect(url_for('expediente_editar', id_expediente=id_expediente) + '#documentos')
     db = get_db()
     uploads = 0
+    invalid_upload = False
     for file in files:
-        if file and allowed_file(file.filename):
-            unique_name = save_unique_file(file, app.config['UPLOAD_FOLDER'])
+        if file and file.filename:
+            if not allowed_file(file.filename, DOCUMENT_EXTENSIONS):
+                invalid_upload = True
+                continue
+            unique_name = save_unique_file(file, app.config['UPLOAD_FOLDER'], DOCUMENT_EXTENSIONS)
             db.execute('INSERT INTO documentos (id_expediente, nombre_archivo, ruta_archivo) VALUES (?, ?, ?)', (id_expediente, unique_name, unique_name))
             uploads += 1
     if uploads > 0:
         db.commit()
         flash(f'{uploads} documento(s) subido(s) con éxito.', 'success')
+    if invalid_upload:
+        flash('Se omitieron archivos; solo se permiten PDF, PNG, JPG y WEBP.', 'error')
+    elif uploads == 0:
+        flash('No se encontró ningún archivo válido para subir.', 'error')
     return redirect(url_for('expediente_editar', id_expediente=id_expediente) + '#documentos')
 
 # --- INVENTARIO ---
@@ -721,6 +880,7 @@ def inventario():
     items = []
     for item in items_db:
         item_dict = dict(item)
+        item_dict['fecha_vencimiento'] = iso_date_value(item_dict.get('fecha_vencimiento'))
         precio_venta, precio_compra, cantidad = item_dict.get('precio_venta') or 0, item_dict.get('precio_compra') or 0, item_dict.get('cantidad') or 0
         if item_dict['tipo'] == 'Producto':
             ganancia_unidad = precio_venta - precio_compra
@@ -851,7 +1011,11 @@ def inventario_exportar_xlsx():
 def inventario_nuevo():
     if request.method == 'POST':
         conn = get_db()
-        procesar_formulario_inventario(conn)
+        try:
+            procesar_formulario_inventario(conn)
+        except ValueError as exc:
+            flash(str(exc), 'error')
+            return redirect(url_for('inventario_nuevo'))
         flash('Ítem de inventario creado con éxito.', 'success')
         return redirect(url_for('inventario'))
     return render_template('inventario_form.html', active_page='inventario', accion="Añadir", item=None)
@@ -861,7 +1025,11 @@ def inventario_nuevo():
 def inventario_editar(id):
     conn = get_db()
     if request.method == 'POST':
-        procesar_formulario_inventario(conn, item_id=id)
+        try:
+            procesar_formulario_inventario(conn, item_id=id)
+        except ValueError as exc:
+            flash(str(exc), 'error')
+            return redirect(url_for('inventario_editar', id=id))
         flash('Ítem de inventario actualizado con éxito.', 'success')
         return redirect(url_for('inventario'))
     item = conn.execute('SELECT * FROM inventario WHERE id = ?', (id,)).fetchone()
@@ -873,8 +1041,14 @@ def inventario_agregar_stock(id):
     cantidad, desc = request.form.get('cantidad_a_agregar', 0, type=int), request.form.get('descripcion_movimiento', 'Entrada de stock manual.')
     if cantidad > 0:
         conn = get_db()
-        # CORRECCIÓN: Usar COALESCE y CAST para asegurar que el incremento sea numérico
-        conn.execute('UPDATE inventario SET cantidad = CAST(COALESCE(cantidad, 0) AS INTEGER) + ? WHERE id = ?', (cantidad, id))
+        actualizado = conn.execute(
+            "UPDATE inventario SET cantidad = CAST(COALESCE(cantidad, 0) AS INTEGER) + ? "
+            "WHERE id = ? AND tipo = 'Producto' AND is_deleted = 0",
+            (cantidad, id),
+        )
+        if actualizado.rowcount != 1:
+            flash('El producto no existe o está eliminado.', 'error')
+            return redirect(url_for('inventario'))
         conn.execute("INSERT INTO movimientos_inventario (id_item, tipo_movimiento, cantidad, descripcion) VALUES (?, 'Entrada', ?, ?)", (id, cantidad, desc))
         conn.commit()
         flash(f'Se agregaron {cantidad} unidades al stock.', 'success')
@@ -889,18 +1063,21 @@ def inventario_remover_stock(id):
     cantidad_a_remover = request.form.get('cantidad_a_remover', 0, type=int)
     descripcion = request.form.get('descripcion_movimiento', 'Salida de stock manual.')
     conn = get_db()
-    item_actual = conn.execute('SELECT cantidad FROM inventario WHERE id = ?', (id,)).fetchone()
-    if not item_actual or (item_actual['cantidad'] or 0) < cantidad_a_remover:
+    if cantidad_a_remover <= 0:
+        flash('La cantidad a remover debe ser mayor que cero.', 'error')
+        return redirect(url_for('inventario'))
+    actualizado = conn.execute(
+        "UPDATE inventario SET cantidad = CAST(COALESCE(cantidad, 0) AS INTEGER) - ? "
+        "WHERE id = ? AND tipo = 'Producto' AND is_deleted = 0 AND COALESCE(cantidad, 0) >= ?",
+        (cantidad_a_remover, id, cantidad_a_remover),
+    )
+    if actualizado.rowcount != 1:
         flash('No hay suficiente stock para remover la cantidad indicada.', 'error')
         return redirect(url_for('inventario'))
-    if cantidad_a_remover > 0:
-        # CORRECCIÓN: Usar COALESCE y CAST para asegurar que el decremento sea numérico
-        conn.execute('UPDATE inventario SET cantidad = CAST(COALESCE(cantidad, 0) AS INTEGER) - ? WHERE id = ?', (cantidad_a_remover, id))
+    else:
         conn.execute("INSERT INTO movimientos_inventario (id_item, tipo_movimiento, cantidad, descripcion) VALUES (?, 'Salida', ?, ?)", (id, cantidad_a_remover, descripcion))
         conn.commit()
         flash(f'Se removieron {cantidad_a_remover} unidades del stock.', 'success')
-    else:
-        flash('La cantidad a remover debe ser mayor que cero.', 'error')
     return redirect(url_for('inventario'))
 
 @app.route('/inventario/historial')
@@ -930,7 +1107,12 @@ def cita_nueva():
         if not id_paciente or not fecha or not hora:
             flash('Paciente, fecha y hora son obligatorios.', 'error')
         else:
-            cita_existente = conn.execute('SELECT id FROM citas WHERE fecha_cita = ? AND hora_cita = ? AND estado = "Pendiente"', (fecha, hora)).fetchone()
+            acquire_transaction_lock(conn, f'appointment:{fecha}:{hora}')
+            paciente = conn.execute('SELECT id FROM pacientes WHERE id = ? AND is_deleted = 0', (id_paciente,)).fetchone()
+            if not paciente:
+                flash('El paciente seleccionado no existe o está eliminado.', 'error')
+                return redirect(url_for('cita_nueva'))
+            cita_existente = conn.execute("SELECT id FROM citas WHERE fecha_cita = ? AND hora_cita = ? AND estado = 'Pendiente'", (fecha, hora)).fetchone()
             if cita_existente:
                 flash(f'Ya existe una cita agendada para el {fecha} a las {hora}.', 'error')
             else:
@@ -946,15 +1128,30 @@ def cita_nueva():
 @login_required
 def cita_editar(id):
     conn = get_db()
+    cita_actual = conn.execute('SELECT id, estado FROM citas WHERE id = ?', (id,)).fetchone()
+    if not cita_actual:
+        abort(404)
     if request.method == 'POST':
         id_paciente, fecha, hora, desc = request.form.get('id_paciente'), request.form.get('fecha_cita'), request.form.get('hora_cita'), request.form.get('descripcion')
         if not id_paciente or not fecha or not hora:
             flash('Todos los campos son obligatorios.', 'error')
         else:
-            conn.execute('UPDATE citas SET id_paciente=?, fecha_cita=?, hora_cita=?, descripcion=? WHERE id=?', (id_paciente, fecha, hora, desc, id))
-            conn.commit()
-            flash('Cita actualizada correctamente.', 'success')
-            return redirect(url_for('citas'))
+            if cita_actual['estado'] == 'Pendiente':
+                acquire_transaction_lock(conn, f'appointment:{fecha}:{hora}')
+            paciente = conn.execute('SELECT id FROM pacientes WHERE id = ? AND is_deleted = 0', (id_paciente,)).fetchone()
+            conflicto = conn.execute(
+                "SELECT id FROM citas WHERE fecha_cita = ? AND hora_cita = ? AND estado = 'Pendiente' AND id != ?",
+                (fecha, hora, id),
+            ).fetchone() if cita_actual['estado'] == 'Pendiente' else None
+            if not paciente:
+                flash('El paciente seleccionado no existe o está eliminado.', 'error')
+            elif conflicto:
+                flash(f'Ya existe una cita agendada para el {fecha} a las {hora}.', 'error')
+            else:
+                conn.execute('UPDATE citas SET id_paciente=?, fecha_cita=?, hora_cita=?, descripcion=? WHERE id=?', (id_paciente, fecha, hora, desc, id))
+                conn.commit()
+                flash('Cita actualizada correctamente.', 'success')
+                return redirect(url_for('citas'))
 
     cita = conn.execute("""
         SELECT c.*, p.nombre, p.apellido
@@ -981,7 +1178,11 @@ def atender_cita(id_cita):
 @login_required
 def cita_completar(id):
     conn = get_db()
-    conn.execute("UPDATE citas SET estado = 'Completada' WHERE id = ?", (id,))
+    updated = conn.execute("UPDATE citas SET estado = 'Completada' WHERE id = ? AND estado = 'Pendiente'", (id,))
+    if updated.rowcount != 1:
+        conn.rollback()
+        flash('La cita no existe o ya no está pendiente.', 'error')
+        return redirect(url_for('citas'))
     conn.commit()
     flash('Cita marcada como completada.', 'success')
     return redirect(url_for('citas'))
@@ -990,7 +1191,11 @@ def cita_completar(id):
 @login_required
 def cita_cancelar(id):
     conn = get_db()
-    conn.execute("UPDATE citas SET estado = 'Cancelada' WHERE id = ?", (id,))
+    updated = conn.execute("UPDATE citas SET estado = 'Cancelada' WHERE id = ? AND estado = 'Pendiente'", (id,))
+    if updated.rowcount != 1:
+        conn.rollback()
+        flash('La cita no existe o ya no está pendiente.', 'error')
+        return redirect(url_for('citas'))
     conn.commit()
     flash('Cita cancelada.', 'success')
     return redirect(url_for('citas'))
@@ -1029,7 +1234,12 @@ def creditos():
 def abrir_caja():
     monto_inicial = request.form.get('monto_inicial', 0, type=float)
     db = get_db()
+    if not math.isfinite(monto_inicial) or monto_inicial < 0:
+        flash('El monto inicial debe ser cero o mayor.', 'error')
+        return redirect(url_for('ventas'))
+    acquire_transaction_lock(db, 'cash-register-open')
     if get_caja_abierta(db):
+        db.rollback()
         flash('Ya existe una caja abierta.', 'error')
         return redirect(url_for('ventas'))
     db.execute("INSERT INTO cierres_caja (monto_inicial, estado) VALUES (?, 'Abierta')", (monto_inicial,))
@@ -1055,11 +1265,15 @@ def pre_cierre_caja():
 @login_required
 def cerrar_caja():
     db = get_db()
+    monto_final_real = request.form.get('monto_final_real', 0, type=float)
+    if not math.isfinite(monto_final_real) or monto_final_real < 0:
+        flash('El efectivo contado debe ser cero o mayor.', 'error')
+        return redirect(url_for('ventas'))
+    acquire_transaction_lock(db, 'cash-register-open')
     caja = get_caja_abierta(db)
     if not caja:
         flash('No hay una caja abierta.', 'error')
         return redirect(url_for('ventas'))
-    monto_final_real = request.form.get('monto_final_real', 0, type=float)
     fecha_apertura = caja['fecha_apertura']
     ventas_resumen = db.execute("SELECT SUM(CASE WHEN metodo_pago = 'Efectivo' THEN monto_total ELSE 0 END) as efectivo, SUM(CASE WHEN metodo_pago NOT IN ('Efectivo', 'Crédito') THEN monto_total ELSE 0 END) as otros FROM ventas WHERE fecha_venta >= ? AND metodo_pago != 'Crédito' AND estado != 'Cancelada'", (fecha_apertura,)).fetchone()
     abonos_resumen = db.execute("SELECT SUM(CASE WHEN a.metodo_pago = 'Efectivo' THEN a.monto ELSE 0 END) as efectivo, SUM(CASE WHEN a.metodo_pago != 'Efectivo' THEN a.monto ELSE 0 END) as otros FROM abonos a JOIN ventas v ON a.id_venta = v.id WHERE a.fecha_abono >= ? AND v.estado != 'Cancelada'", (fecha_apertura,)).fetchone()
@@ -1067,7 +1281,11 @@ def cerrar_caja():
     v_otros = (ventas_resumen['otros'] or 0) + (abonos_resumen['otros'] or 0)
     monto_final_calculado = caja['monto_inicial'] + v_efectivo
     diferencia = monto_final_real - monto_final_calculado
-    db.execute("UPDATE cierres_caja SET fecha_cierre = CURRENT_TIMESTAMP, total_ventas_efectivo = ?, total_ventas_otros = ?, monto_final_calculado = ?, monto_final_real = ?, diferencia = ?, estado = 'Cerrada' WHERE id = ?", (v_efectivo, v_otros, monto_final_calculado, monto_final_real, diferencia, caja['id']))
+    updated = db.execute("UPDATE cierres_caja SET fecha_cierre = CURRENT_TIMESTAMP, total_ventas_efectivo = ?, total_ventas_otros = ?, monto_final_calculado = ?, monto_final_real = ?, diferencia = ?, estado = 'Cerrada' WHERE id = ? AND estado = 'Abierta'", (v_efectivo, v_otros, monto_final_calculado, monto_final_real, diferencia, caja['id']))
+    if updated.rowcount != 1:
+        db.rollback()
+        flash('La caja ya fue cerrada por otro usuario.', 'error')
+        return redirect(url_for('ventas'))
     db.commit()
     flash('Caja cerrada correctamente.', 'success')
     return redirect(url_for('ventas'))
@@ -1085,6 +1303,16 @@ def cancelar_venta(id_venta):
     if abonos_count > 0:
         flash('No se puede cancelar una venta que ya tiene abonos registrados.', 'error'); return redirect(url_for('venta_detalle', id_venta=id_venta))
     try:
+        claim = db.execute(
+            "UPDATE ventas SET estado = 'Cancelada', saldo_pendiente = 0 "
+            "WHERE id = ? AND estado != 'Cancelada' "
+            "AND NOT EXISTS (SELECT 1 FROM abonos WHERE id_venta = ventas.id)",
+            (id_venta,),
+        )
+        if claim.rowcount != 1:
+            db.rollback()
+            flash('La venta cambió o ya tiene abonos; no se pudo cancelar.', 'error')
+            return redirect(url_for('venta_detalle', id_venta=id_venta))
         detalles = db.execute("SELECT * FROM ventas_detalle WHERE id_venta = ?", (id_venta,)).fetchall()
         for item in detalles:
             prod = db.execute("SELECT tipo FROM inventario WHERE id = ?", (item['id_item_inventario'],)).fetchone()
@@ -1093,11 +1321,12 @@ def cancelar_venta(id_venta):
             if tipo_item == 'producto':
                 db.execute("UPDATE inventario SET cantidad = CAST(COALESCE(cantidad, 0) AS INTEGER) + ? WHERE id = ?", (item['cantidad'], item['id_item_inventario']))
                 db.execute("INSERT INTO movimientos_inventario (id_item, tipo_movimiento, cantidad, descripcion) VALUES (?, 'Entrada por Cancelación', ?, ?)", (item['id_item_inventario'], item['cantidad'], f'Cancelación Venta #{id_venta}'))
-        db.execute("UPDATE ventas SET estado = 'Cancelada', saldo_pendiente = 0 WHERE id = ?", (id_venta,))
         db.commit()
         flash(f'Venta #{id_venta} cancelada correctamente. Stock devuelto.', 'success')
     except Exception as e:
-        db.rollback(); flash(f'Error al cancelar venta: {e}', 'error')
+        db.rollback()
+        app.logger.exception('Failed to cancel sale %s', id_venta)
+        flash('No se pudo cancelar la venta. No se aplicaron cambios.', 'error')
     return redirect(url_for('venta_detalle', id_venta=id_venta))
 
 @app.route('/ventas/nueva', methods=['GET', 'POST'])
@@ -1107,6 +1336,9 @@ def venta_nueva():
     caja_abierta = get_caja_abierta(db) # <--- AGREGADO
 
     if request.method == 'POST':
+        if not caja_abierta:
+            flash('Debe abrir la caja antes de registrar una venta.', 'error')
+            return redirect(url_for('ventas'))
         id_paciente = request.form.get('id_paciente')
         item_ids = request.form.getlist('item_ids[]')
         cantidades = request.form.getlist('quantities[]')
@@ -1115,28 +1347,46 @@ def venta_nueva():
         metodo_pago = request.form.get('metodo_pago')
         referencia_pago = request.form.get('referencia_pago', '')
         id_cita = request.form.get('id_cita')
-        if not id_paciente or not item_ids or not metodo_pago:
+        if not id_paciente or not item_ids or not metodo_pago or len(cantidades) != len(item_ids):
             flash('Datos incompletos.', 'error'); return redirect(url_for('venta_nueva'))
+        if metodo_pago not in {'Efectivo', 'Tarjeta', 'Transferencia', 'Crédito'}:
+            flash('Método de pago inválido.', 'error'); return redirect(url_for('venta_nueva'))
         if metodo_pago != 'Efectivo' and metodo_pago != 'Crédito' and not referencia_pago:
             flash('Referencia obligatoria.', 'error'); return redirect(url_for('venta_nueva'))
         try:
+            paciente = db.execute('SELECT id FROM pacientes WHERE id = ? AND is_deleted = 0', (id_paciente,)).fetchone()
+            if not paciente:
+                raise ValueError('El paciente seleccionado no existe o está eliminado.')
+            if id_cita:
+                cita = db.execute("SELECT id FROM citas WHERE id = ? AND id_paciente = ? AND estado = 'Pendiente'", (id_cita, id_paciente)).fetchone()
+                if not cita:
+                    raise ValueError('La cita seleccionada no existe, no está pendiente o pertenece a otro paciente.')
             subtotal = 0; items_para_venta = []
             for i, item_id in enumerate(item_ids):
-                cantidad = int(cantidades[i]); descuento = float(descuentos_items[i]) if descuentos_items[i] else 0.0
-                item = db.execute('SELECT * FROM inventario WHERE id = ?', (item_id,)).fetchone()
+                cantidad = int(cantidades[i])
+                descuento = float(descuentos_items[i]) if i < len(descuentos_items) and descuentos_items[i] else 0.0
+                if cantidad <= 0 or not math.isfinite(descuento) or descuento < 0:
+                    raise ValueError('La cantidad y el descuento de cada producto deben ser válidos.')
+                item = db.execute('SELECT * FROM inventario WHERE id = ? AND is_deleted = 0', (item_id,)).fetchone()
+                if not item:
+                    raise ValueError('Uno de los artículos seleccionados no existe o está eliminado.')
 
                 # Normalización de tipo
                 tipo_item = str(item['tipo']).strip().lower() if item['tipo'] else ""
+                precio_unitario = float(item['precio_venta'])
+                if not math.isfinite(precio_unitario) or descuento > precio_unitario:
+                    raise ValueError('El descuento no puede superar el precio del artículo.')
 
                 # Verificar stock si es producto
                 if tipo_item == 'producto' and (item['cantidad'] or 0) < cantidad:
-                    flash(f"No hay stock suficiente para '{item['nombre']}'.", 'error'); return redirect(url_for('venta_nueva'))
+                    raise ValueError(f"No hay stock suficiente para '{item['nombre']}'.")
 
-                precio_unitario = item['precio_venta']
                 subtotal += (precio_unitario - descuento) * cantidad
                 items_para_venta.append({'item': item, 'cantidad': cantidad, 'precio_unitario': precio_unitario, 'descuento': descuento, 'tipo_normalizado': tipo_item})
 
             monto_total = subtotal - descuento_general
+            if not math.isfinite(descuento_general) or descuento_general < 0 or descuento_general > subtotal:
+                raise ValueError('El descuento general debe estar entre cero y el subtotal.')
             saldo_pendiente = monto_total if metodo_pago == 'Crédito' else 0
             estado_pago = 'Pendiente' if metodo_pago == 'Crédito' else 'Pagado'
 
@@ -1150,16 +1400,26 @@ def venta_nueva():
 
                 # CORRECCIÓN: Restar inventario con casting a INTEGER y COALESCE para evitar errores de tipo o nulos
                 if venta_item['tipo_normalizado'] == 'producto':
-                    cur.execute("""
+                    stock_actualizado = cur.execute("""
                         UPDATE inventario
                         SET cantidad = CAST(COALESCE(cantidad, 0) AS INTEGER) - ?
-                        WHERE id = ?
-                    """, (cantidad, item['id']))
+                        WHERE id = ? AND is_deleted = 0 AND COALESCE(cantidad, 0) >= ?
+                    """, (cantidad, item['id'], cantidad))
+                    if stock_actualizado.rowcount != 1:
+                        raise ValueError(f"El stock de '{item['nombre']}' cambió; actualice la venta e intente de nuevo.")
                     cur.execute("INSERT INTO movimientos_inventario (id_item, tipo_movimiento, cantidad, descripcion) VALUES (?, 'Salida por Venta', ?, ?)", (item['id'], cantidad, f'Venta #{id_venta}'))
 
             if id_cita: cur.execute("UPDATE citas SET estado = 'Completada' WHERE id = ?", (id_cita,))
             db.commit(); flash(f'Venta #{id_venta} registrada.', 'success'); return redirect(url_for('ventas'))
-        except Exception as e: db.rollback(); flash(f'Error: {e}', 'error'); return redirect(url_for('venta_nueva'))
+        except ValueError as exc:
+            db.rollback()
+            flash(str(exc), 'error')
+            return redirect(url_for('venta_nueva'))
+        except Exception:
+            db.rollback()
+            app.logger.exception('Failed to create sale')
+            flash('No se pudo registrar la venta. No se aplicaron cambios.', 'error')
+            return redirect(url_for('venta_nueva'))
     return render_template('venta_form.html', active_page='ventas', accion="Registrar", caja_abierta=caja_abierta) # <--- ACTUALIZADO
 
 @app.route('/ventas/abonar/<int:id_venta>', methods=['POST'])
@@ -1168,16 +1428,34 @@ def abonar_venta(id_venta):
     monto = request.form.get('monto_abono', type=float)
     metodo = request.form.get('metodo_abono'); referencia = request.form.get('referencia_abono', '')
     origen = request.form.get('origen_url', 'ventas')
-    if not monto or monto <= 0: flash('Monto inválido.', 'error'); return redirect(url_for('ventas'))
-    db = get_db(); venta = db.execute('SELECT * FROM ventas WHERE id = ?', (id_venta,)).fetchone()
-    if not venta or monto > venta['saldo_pendiente']: flash('Venta no encontrada o monto excesivo.', 'error'); return redirect(url_for('ventas'))
-    nuevo_saldo = venta['saldo_pendiente'] - monto
-    nuevo_estado = 'Pagado' if nuevo_saldo <= 0 else 'Pendiente'
+    if origen not in {'ventas', 'creditos'}:
+        origen = 'ventas'
+    if not monto or not math.isfinite(monto) or monto <= 0:
+        flash('Monto inválido.', 'error')
+        return redirect(url_for(origen))
+    if metodo not in {'Efectivo', 'Tarjeta', 'Transferencia'} or (metodo != 'Efectivo' and not referencia):
+        flash('Método de pago o referencia inválidos.', 'error')
+        return redirect(url_for(origen))
+    db = get_db()
     try:
+        updated = db.execute(
+            "UPDATE ventas SET saldo_pendiente = COALESCE(saldo_pendiente, 0) - ?, "
+            "estado_pago = CASE WHEN COALESCE(saldo_pendiente, 0) - ? <= 0 THEN 'Pagado' ELSE 'Pendiente' END "
+            "WHERE id = ? AND estado != 'Cancelada' AND COALESCE(saldo_pendiente, 0) >= ?",
+            (monto, monto, id_venta, monto),
+        )
+        if updated.rowcount != 1:
+            db.rollback()
+            flash('La venta no existe, está cancelada o el abono supera el saldo pendiente.', 'error')
+            return redirect(url_for(origen))
+        nuevo_saldo = db.execute('SELECT saldo_pendiente FROM ventas WHERE id = ?', (id_venta,)).fetchone()['saldo_pendiente']
         db.execute('INSERT INTO abonos (id_venta, monto, metodo_pago, referencia_pago, saldo_actual_snapshot) VALUES (?, ?, ?, ?, ?)', (id_venta, monto, metodo, referencia, nuevo_saldo))
-        db.execute('UPDATE ventas SET saldo_pendiente = ?, estado_pago = ? WHERE id = ?', (nuevo_saldo, nuevo_estado, id_venta))
-        db.commit(); flash('Abono registrado.', 'success')
-    except Exception as e: db.rollback(); flash(f'Error: {e}', 'error')
+        db.commit()
+        flash('Abono registrado.', 'success')
+    except Exception:
+        db.rollback()
+        app.logger.exception('Failed to apply sale payment')
+        flash('No se pudo registrar el abono.', 'error')
     return redirect(url_for(origen))
 
 @app.route('/venta/detalle/<int:id_venta>')
@@ -1206,7 +1484,7 @@ def generar_reporte_financiero():
     fecha_fin = request.form.get('fecha_fin')
     db = get_db()
     ventas_data = db.execute("SELECT COUNT(id) as total_trx, SUM(monto_total) as total_vendido FROM ventas WHERE DATE(fecha_venta) BETWEEN ? AND ? AND estado != 'Cancelada'", (fecha_inicio, fecha_fin)).fetchone()
-    ganancia_data = db.execute("SELECT SUM((vd.precio_unitario - vd.descuento) * vd.cantidad) - SUM(i.precio_compra * vd.cantidad) as ganancia_bruta FROM ventas_detalle vd JOIN ventas v ON vd.id_venta = v.id JOIN inventario i ON vd.id_item_inventario = i.id WHERE DATE(v.fecha_venta) BETWEEN ? AND ? AND v.estado != 'Cancelada'", (fecha_inicio, fecha_fin)).fetchone()
+    ganancia_data = db.execute("SELECT SUM((vd.precio_unitario - vd.descuento) * vd.cantidad) - SUM(COALESCE(i.precio_compra, 0) * vd.cantidad) as ganancia_bruta FROM ventas_detalle vd JOIN ventas v ON vd.id_venta = v.id JOIN inventario i ON vd.id_item_inventario = i.id WHERE DATE(v.fecha_venta) BETWEEN ? AND ? AND v.estado != 'Cancelada'", (fecha_inicio, fecha_fin)).fetchone()
     ingresos_data = db.execute("SELECT SUM(CASE WHEN metodo_pago = 'Efectivo' THEN monto ELSE 0 END) as total_efectivo, SUM(CASE WHEN metodo_pago NOT IN ('Efectivo', 'Crédito') THEN monto ELSE 0 END) as total_bancos FROM (SELECT metodo_pago, monto_total as monto FROM ventas WHERE DATE(fecha_venta) BETWEEN ? AND ? AND metodo_pago != 'Crédito' AND estado != 'Cancelada' UNION ALL SELECT metodo_pago, monto FROM abonos WHERE DATE(fecha_abono) BETWEEN ? AND ?) ", (fecha_inicio, fecha_fin, fecha_inicio, fecha_fin)).fetchone()
     creditos_data = db.execute("SELECT SUM(monto_total) as total_credito FROM ventas WHERE DATE(fecha_venta) BETWEEN ? AND ? AND metodo_pago = 'Crédito' AND estado != 'Cancelada'", (fecha_inicio, fecha_fin)).fetchone()
     tipo_data = db.execute("SELECT SUM(CASE WHEN i.tipo = 'Producto' THEN (vd.precio_unitario - vd.descuento) * vd.cantidad ELSE 0 END) as total_productos, SUM(CASE WHEN i.tipo = 'Servicio' THEN (vd.precio_unitario - vd.descuento) * vd.cantidad ELSE 0 END) as total_servicios FROM ventas_detalle vd JOIN ventas v ON vd.id_venta = v.id JOIN inventario i ON vd.id_item_inventario = i.id WHERE DATE(v.fecha_venta) BETWEEN ? AND ? AND v.estado != 'Cancelada'", (fecha_inicio, fecha_fin)).fetchone()
@@ -1231,45 +1509,118 @@ def pagos():
 @login_required
 def nuevo_gasto():
     d, p, m, fe, fv = request.form.get('descripcion'), request.form.get('proveedor'), request.form.get('monto', type=float), request.form.get('fecha_emision'), request.form.get('fecha_vencimiento')
-    if not d or not m: flash('Descripción y monto son obligatorios.', 'error'); return redirect(url_for('pagos'))
-    db = get_db(); db.execute("INSERT INTO gastos (descripcion, proveedor, monto, fecha_emision, fecha_vencimiento, saldo_pendiente) VALUES (?, ?, ?, ?, ?, ?)", (d, p, m, fe, fv, m)); db.commit()
-    flash('Gasto registrado.', 'success'); return redirect(url_for('pagos'))
+    if not d or not d.strip() or not m or not math.isfinite(m) or m <= 0:
+        flash('Descripción y un monto mayor que cero son obligatorios.', 'error')
+        return redirect(url_for('pagos'))
+    try:
+        fecha_emision = date.fromisoformat(fe) if fe else None
+        fecha_vencimiento = date.fromisoformat(fv) if fv else None
+    except ValueError:
+        flash('Las fechas del gasto no son válidas.', 'error')
+        return redirect(url_for('pagos'))
+    if fecha_emision and fecha_vencimiento and fecha_vencimiento < fecha_emision:
+        flash('El vencimiento no puede ser anterior a la fecha de emisión.', 'error')
+        return redirect(url_for('pagos'))
+    db = get_db()
+    try:
+        db.execute("INSERT INTO gastos (descripcion, proveedor, monto, fecha_emision, fecha_vencimiento, saldo_pendiente) VALUES (?, ?, ?, ?, ?, ?)", (d.strip(), p, m, fe, fv, m))
+        db.commit()
+        flash('Gasto registrado.', 'success')
+    except Exception:
+        db.rollback()
+        app.logger.exception('Failed to create expense')
+        flash('No se pudo registrar el gasto.', 'error')
+    return redirect(url_for('pagos'))
 
 @app.route('/pagos/pagar/<int:id_gasto>', methods=['POST'])
 @login_required
 def pagar_gasto(id_gasto):
     fecha_pago = request.form.get('fecha_pago', date.today().strftime('%Y-%m-%d'))
     archivo = request.files.get('comprobante'); filename = None
-    if archivo and archivo.filename != '':
-        filename = save_unique_file(archivo, app.config['EXPENSE_UPLOAD_FOLDER'])
+    try:
+        date.fromisoformat(fecha_pago)
+    except (TypeError, ValueError):
+        flash('La fecha de pago no es válida.', 'error')
+        return redirect(url_for('pagos'))
     db = get_db()
-    if filename: db.execute("UPDATE gastos SET estado = 'Pagado', fecha_pago = ?, comprobante_ruta = ?, saldo_pendiente = 0 WHERE id = ?", (fecha_pago, filename, id_gasto))
-    else: db.execute("UPDATE gastos SET estado = 'Pagado', fecha_pago = ?, saldo_pendiente = 0 WHERE id = ?", (fecha_pago, id_gasto))
-    db.commit(); flash('Gasto pagado.', 'success'); return redirect(url_for('pagos'))
+    gasto = db.execute(
+        "SELECT estado, COALESCE(saldo_pendiente, monto) AS saldo FROM gastos WHERE id = ?",
+        (id_gasto,),
+    ).fetchone()
+    if not gasto or gasto['estado'] == 'Pagado' or gasto['saldo'] <= 0:
+        flash('El gasto no existe o ya está pagado.', 'error')
+        return redirect(url_for('pagos'))
+    if archivo and archivo.filename != '':
+        if not allowed_file(archivo.filename, DOCUMENT_EXTENSIONS):
+            flash('El comprobante debe ser PDF, PNG, JPG o WEBP.', 'error')
+            return redirect(url_for('pagos'))
+        filename = save_unique_file(archivo, app.config['EXPENSE_UPLOAD_FOLDER'], DOCUMENT_EXTENSIONS)
+    try:
+        if filename:
+            updated = db.execute(
+                "UPDATE gastos SET estado = 'Pagado', fecha_pago = ?, comprobante_ruta = ?, saldo_pendiente = 0 "
+                "WHERE id = ? AND estado != 'Pagado' AND COALESCE(saldo_pendiente, monto) > 0",
+                (fecha_pago, filename, id_gasto),
+            )
+        else:
+            updated = db.execute(
+                "UPDATE gastos SET estado = 'Pagado', fecha_pago = ?, saldo_pendiente = 0 "
+                "WHERE id = ? AND estado != 'Pagado' AND COALESCE(saldo_pendiente, monto) > 0",
+                (fecha_pago, id_gasto),
+            )
+        if updated.rowcount != 1:
+            db.rollback()
+            if filename:
+                os.remove(os.path.join(app.config['EXPENSE_UPLOAD_FOLDER'], filename))
+            flash('El gasto ya fue pagado o cambió su saldo.', 'error')
+            return redirect(url_for('pagos'))
+        db.commit()
+        flash('Gasto pagado.', 'success')
+    except Exception:
+        db.rollback()
+        if filename:
+            try:
+                os.remove(os.path.join(app.config['EXPENSE_UPLOAD_FOLDER'], filename))
+            except OSError:
+                app.logger.exception('Failed to clean up expense receipt')
+        app.logger.exception('Failed to mark expense as paid')
+        flash('No se pudo marcar el gasto como pagado.', 'error')
+    return redirect(url_for('pagos'))
 
 @app.route('/pagos/abonar/<int:id_gasto>', methods=['POST'])
 @login_required
 def abonar_gasto(id_gasto):
     monto = request.form.get('monto_abono', type=float)
     metodo = request.form.get('metodo_abono'); referencia = request.form.get('referencia_abono', '')
-    db = get_db(); gasto = db.execute('SELECT * FROM gastos WHERE id = ?', (id_gasto,)).fetchone()
-    if not gasto: flash('Gasto no encontrado.', 'error'); return redirect(url_for('pagos'))
-    saldo_actual = gasto['saldo_pendiente'] if gasto['saldo_pendiente'] is not None else gasto['monto']
-    if not monto or monto <= 0 or monto > saldo_actual:
-        flash('Monto de abono inválido.', 'error'); return redirect(url_for('pagos'))
-    nuevo_saldo = round(saldo_actual - monto, 2)
-    nuevo_estado = 'Pagado' if nuevo_saldo <= 0 else 'Parcial'
+    if not monto or not math.isfinite(monto) or monto <= 0:
+        flash('Monto de abono inválido.', 'error')
+        return redirect(url_for('pagos'))
+    if metodo not in {'Efectivo', 'Tarjeta', 'Transferencia'} or (metodo != 'Efectivo' and not referencia):
+        flash('Método de pago o referencia inválidos.', 'error')
+        return redirect(url_for('pagos'))
+    db = get_db()
     try:
+        updated = db.execute(
+            "UPDATE gastos SET "
+            "saldo_pendiente = COALESCE(saldo_pendiente, monto) - ?, "
+            "estado = CASE WHEN COALESCE(saldo_pendiente, monto) - ? <= 0 THEN 'Pagado' ELSE 'Parcial' END, "
+            "fecha_pago = CASE WHEN COALESCE(saldo_pendiente, monto) - ? <= 0 THEN CURRENT_DATE ELSE fecha_pago END "
+            "WHERE id = ? AND estado != 'Pagado' AND COALESCE(saldo_pendiente, monto) >= ?",
+            (monto, monto, monto, id_gasto, monto),
+        )
+        if updated.rowcount != 1:
+            db.rollback()
+            flash('El gasto no existe, ya está pagado o el abono supera el saldo pendiente.', 'error')
+            return redirect(url_for('pagos'))
+        nuevo_saldo = db.execute('SELECT saldo_pendiente FROM gastos WHERE id = ?', (id_gasto,)).fetchone()['saldo_pendiente']
         db.execute('INSERT INTO abonos_gastos (id_gasto, monto, metodo_pago, referencia_pago, saldo_actual_snapshot) VALUES (?, ?, ?, ?, ?)',
                    (id_gasto, monto, metodo, referencia, nuevo_saldo))
-        if nuevo_estado == 'Pagado':
-            db.execute('UPDATE gastos SET saldo_pendiente = ?, estado = ?, fecha_pago = ? WHERE id = ?',
-                       (nuevo_saldo, nuevo_estado, date.today().strftime('%Y-%m-%d'), id_gasto))
-        else:
-            db.execute('UPDATE gastos SET saldo_pendiente = ?, estado = ? WHERE id = ?', (nuevo_saldo, nuevo_estado, id_gasto))
-        db.commit(); flash('Abono registrado.', 'success')
-    except Exception as e:
-        db.rollback(); flash(f'Error: {e}', 'error')
+        db.commit()
+        flash('Abono registrado.', 'success')
+    except Exception:
+        db.rollback()
+        app.logger.exception('Failed to apply expense payment')
+        flash('No se pudo registrar el abono.', 'error')
     return redirect(url_for('pagos'))
 
 @app.route('/api/pagos/<int:id_gasto>/abonos')
@@ -1393,4 +1744,4 @@ def eliminar_documento_permanente(id_documento):
 if __name__ == '__main__':
     for folder in [UPLOAD_FOLDER, PRODUCT_UPLOAD_FOLDER, EXPENSE_UPLOAD_FOLDER]:
         if not os.path.exists(folder): os.makedirs(folder)
-    app.run(debug=True)
+    app.run(debug=os.getenv('FLASK_DEBUG', '').lower() in {'1', 'true', 'yes'})

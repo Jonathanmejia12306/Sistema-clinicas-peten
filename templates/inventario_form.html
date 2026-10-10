@@ -199,8 +199,8 @@
             </div>
             <div>
                 <label for="fecha_vencimiento" class="block text-gray-700 font-bold mb-2">Fecha Vencimiento (Lote actual)</label>
-                <input type="date" name="fecha_vencimiento" id="fecha_vencimiento" value="{{ item.fecha_vencimiento if item else '' }}" 
-                       class="input-custom w-full px-3 py-2 rounded-md">
+                  <input type="date" name="fecha_vencimiento" id="fecha_vencimiento" value="{{ item.fecha_vencimiento|db_datetime(true) if item else '' }}"
+                      class="input-custom w-full px-3 py-2 rounded-md">
             </div>
         </div>
 

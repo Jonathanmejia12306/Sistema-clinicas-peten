@@ -208,7 +208,7 @@
 
     function getVencimientoInfo(item) {
         if (item.tipo !== 'Producto' || !item.fecha_vencimiento) {
-            return { html: item.fecha_vencimiento || '-', rowClass: '' };
+            return { html: escapeHtml(item.fecha_vencimiento || '-'), rowClass: '' };
         }
         const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
         const [y, m, d] = item.fecha_vencimiento.split('-');
@@ -219,21 +219,21 @@
         if (dias < 0) {
             badgeClass = 'bg-red-600 text-white';
             rowClass = 'bg-red-50';
-            label = `Vencido (${item.fecha_vencimiento})`;
+            label = `Vencido (${escapeHtml(item.fecha_vencimiento)})`;
         } else if (dias <= 15) {
             badgeClass = 'bg-red-100 text-red-700 border border-red-300';
             rowClass = 'bg-red-50';
-            label = `${item.fecha_vencimiento} (${dias}d)`;
+            label = `${escapeHtml(item.fecha_vencimiento)} (${dias}d)`;
         } else if (dias <= 30) {
             badgeClass = 'bg-orange-100 text-orange-700 border border-orange-300';
             rowClass = 'bg-orange-50';
-            label = `${item.fecha_vencimiento} (${dias}d)`;
+            label = `${escapeHtml(item.fecha_vencimiento)} (${dias}d)`;
         } else if (dias <= 60) {
             badgeClass = 'bg-yellow-100 text-yellow-700 border border-yellow-300';
             rowClass = '';
-            label = `${item.fecha_vencimiento} (${dias}d)`;
+            label = `${escapeHtml(item.fecha_vencimiento)} (${dias}d)`;
         } else {
-            return { html: item.fecha_vencimiento, rowClass: '' };
+            return { html: escapeHtml(item.fecha_vencimiento), rowClass: '' };
         }
         return { html: `<span class="px-2 py-1 rounded-full text-xs font-bold whitespace-nowrap ${badgeClass}">${label}</span>`, rowClass };
     }
@@ -261,10 +261,10 @@
             let botones = '';
             // Agregar Stock (+)
             if (item.tipo === 'Producto') {
-                botones += `<button onclick="openAddStockModal(this)" data-id="${item.id}" data-nombre="${item.nombre}" class="text-green-600 hover:bg-green-100 w-8 h-8 rounded-full transition-all"><i class="fas fa-plus"></i></button>`;
+                botones += `<button onclick="openAddStockModal(this)" data-id="${item.id}" data-nombre="${escapeHtml(item.nombre)}" class="text-green-600 hover:bg-green-100 w-8 h-8 rounded-full transition-all"><i class="fas fa-plus"></i></button>`;
                 // Quitar Stock (-) solo Admin
                 if (userRole === 'admin') {
-                    botones += `<button onclick="openRemoveStockModal(this)" data-id="${item.id}" data-nombre="${item.nombre}" class="text-orange-500 hover:bg-orange-100 w-8 h-8 rounded-full transition-all"><i class="fas fa-minus"></i></button>`;
+                    botones += `<button onclick="openRemoveStockModal(this)" data-id="${item.id}" data-nombre="${escapeHtml(item.nombre)}" class="text-orange-500 hover:bg-orange-100 w-8 h-8 rounded-full transition-all"><i class="fas fa-minus"></i></button>`;
                 }
             }
             // Editar
@@ -278,9 +278,9 @@
             }
 
             row.innerHTML = `
-                <td class="p-3">${item.ruta_foto ? `<img src="/uploads/productos/${item.ruta_foto}" class="h-10 w-10 object-cover rounded shadow-sm">` : `<i class="fas fa-image text-gray-200"></i>`}</td>
-                <td class="p-3 font-bold">${item.nombre}</td>
-                <td class="p-3"><span class="px-2 py-1 rounded-full text-xs font-bold ${item.tipo === 'Producto' ? 'bg-teal-100 text-teal-800' : 'bg-purple-100 text-purple-800'}">${item.tipo}</span></td>
+                <td class="p-3">${item.ruta_foto ? `<img src="/uploads/productos/${escapeHtml(item.ruta_foto)}" class="h-10 w-10 object-cover rounded shadow-sm">` : `<i class="fas fa-image text-gray-200"></i>`}</td>
+                <td class="p-3 font-bold">${escapeHtml(item.nombre)}</td>
+                <td class="p-3"><span class="px-2 py-1 rounded-full text-xs font-bold ${item.tipo === 'Producto' ? 'bg-teal-100 text-teal-800' : 'bg-purple-100 text-purple-800'}">${escapeHtml(item.tipo)}</span></td>
                 <td class="p-3 text-sm">${venc.html}</td>
                 <td class="p-3 font-bold">${item.tipo === 'Producto' ? (item.cantidad || 0) : '-'}</td>
                 <td class="p-3">Q${item.precio_venta.toFixed(2)}</td>

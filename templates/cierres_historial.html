@@ -60,10 +60,10 @@
                 {% for c in cierres %}
                 <tr class="hover:bg-[#F3E2DA]/30 transition">
                     <td class="py-3 px-4 font-bold text-[#23807A]">#{{ c.id }}</td>
-                    <td class="py-3 px-4 whitespace-nowrap">{{ c.fecha_apertura }}</td>
+                    <td class="py-3 px-4 whitespace-nowrap">{{ c.fecha_apertura|db_datetime }}</td>
                     <td class="py-3 px-4 whitespace-nowrap font-bold">
                         {% if c.fecha_cierre %}
-                            {{ c.fecha_cierre }}
+                            {{ c.fecha_cierre|db_datetime }}
                         {% else %}
                             <!-- ETIQUETA ABIERTA -->
                             <span class="text-[#8ABCA5] font-bold animate-pulse">Abierta</span>

@@ -65,7 +65,7 @@
                     <tr class="hover:bg-gray-50 transition-colors">
                         <td class="py-4 px-6 font-medium text-gray-700">{{ paciente.nombre }} {{ paciente.apellido }}</td>
                         <td class="py-4 px-6 text-gray-500">{{ paciente.telefono }}</td>
-                        <td class="py-4 px-6 text-gray-500 text-sm">{{ paciente.deleted_at[:16] if paciente.deleted_at else 'N/A' }}</td>
+                        <td class="py-4 px-6 text-gray-500 text-sm">{{ paciente.deleted_at|db_datetime if paciente.deleted_at else 'N/A' }}</td>
                         <td class="py-4 px-6 whitespace-nowrap text-center space-x-2">
                             <form action="{{ url_for('restaurar_paciente', id=paciente.id) }}" method="POST" class="inline-block" title="Restaurar Paciente">
                                 <button type="submit" class="bg-green-50 text-green-700 border border-green-200 px-3 py-1.5 rounded-md text-xs font-bold hover:bg-green-100 transition flex items-center gap-1">
@@ -121,7 +121,7 @@
                                 {{ item.tipo }}
                             </span>
                         </td>
-                        <td class="py-4 px-6 text-gray-500 text-sm">{{ item.deleted_at[:16] if item.deleted_at else 'N/A' }}</td>
+                        <td class="py-4 px-6 text-gray-500 text-sm">{{ item.deleted_at|db_datetime if item.deleted_at else 'N/A' }}</td>
                         <td class="py-4 px-6 whitespace-nowrap text-center space-x-2">
                             <!-- BOTONES FUNCIONALES -->
                             <form action="{{ url_for('inventario_restaurar', id=item.id) }}" method="POST" class="inline-block" title="Restaurar Ítem">

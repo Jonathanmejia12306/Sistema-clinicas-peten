@@ -85,7 +85,7 @@
                             <i class="far fa-file-image text-gray-400"></i> {{ doc.nombre_archivo }}
                         </td>
                         <td class="py-4 px-6 text-gray-500 text-sm">
-                            {{ doc.deleted_at[:16] if doc.deleted_at else 'N/A' }}
+                            {{ doc.deleted_at|db_datetime if doc.deleted_at else 'N/A' }}
                         </td>
                         <td class="py-4 px-6 whitespace-nowrap text-center space-x-2">
                             <!-- Botón Restaurar -->

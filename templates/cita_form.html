@@ -111,7 +111,7 @@
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
             <div>
                 <label for="fecha_cita" class="block text-gray-700 font-semibold mb-2">Fecha de la Cita <span class="text-red-500">*</span></label>
-                <input type="date" id="fecha_cita" name="fecha_cita" value="{{ cita.fecha_cita if cita else '' }}"
+                <input type="date" id="fecha_cita" name="fecha_cita" value="{{ cita.fecha_cita|db_datetime(true) if cita else '' }}"
                        class="input-custom w-full px-4 py-3 rounded-md text-gray-700" required>
             </div>
 
@@ -200,7 +200,7 @@
                     pacientes.forEach(paciente => {
                         const resultItem = document.createElement('div');
                         resultItem.className = 'search-result-item';
-                        resultItem.innerHTML = `<span class="font-bold">${paciente.nombre} ${paciente.apellido}</span> <span class="text-sm text-gray-500 ml-2">(${paciente.telefono})</span>`;
+                        resultItem.innerHTML = `<span class="font-bold">${escapeHtml(paciente.nombre)} ${escapeHtml(paciente.apellido)}</span> <span class="text-sm text-gray-500 ml-2">(${escapeHtml(paciente.telefono || '')})</span>`;
 
                         resultItem.addEventListener('click', function() {
                             searchInput.value = `${paciente.nombre} ${paciente.apellido}`;

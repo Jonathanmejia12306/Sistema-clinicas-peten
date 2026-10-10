@@ -117,7 +117,7 @@
                             {{ cita.nombre }} {{ cita.apellido }}
                         </td>
                         <td class="py-4 px-6 text-gray-600 whitespace-nowrap">
-                            {{ cita.fecha_cita }}
+                            {{ cita.fecha_cita|db_datetime(true) }}
                         </td>
                         <td class="py-4 px-6 font-mono text-gray-600 text-sm">
                             {{ cita.hora_cita }}

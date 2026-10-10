@@ -117,9 +117,9 @@
                     let productosHtml = '';
                     if (cita.productos_usados) {
                         // Convertir la lista separada por comas en algo más visual si se desea, o dejar texto plano
-                        productosHtml = `<div class="product-list font-medium text-gray-700">
+                                productosHtml = `<div class="product-list font-medium text-gray-700">
                                             <i class="fas fa-shopping-cart text-[#23807A] mr-1 text-xs"></i> 
-                                            ${cita.productos_usados}
+                                                          ${escapeHtml(cita.productos_usados)}
                                          </div>`;
                     } else {
                         productosHtml = '<span class="text-gray-400 text-xs">- Sin venta registrada -</span>';
@@ -127,14 +127,14 @@
 
                     row.innerHTML = `
                         <td class="py-4 px-6 font-bold text-gray-800">
-                            ${cita.nombre} ${cita.apellido}
+                            ${escapeHtml(cita.nombre)} ${escapeHtml(cita.apellido)}
                         </td>
                         <td class="py-4 px-6 text-gray-600">
-                            <div class="font-medium">${cita.fecha_cita}</div>
-                            <div class="text-xs text-[#23807A] font-bold">${cita.hora_cita}</div>
+                            <div class="font-medium">${escapeHtml(cita.fecha_cita)}</div>
+                            <div class="text-xs text-[#23807A] font-bold">${escapeHtml(cita.hora_cita)}</div>
                         </td>
                         <td class="py-4 px-6 text-gray-500 italic">
-                            ${cita.descripcion || 'Sin descripción'}
+                            ${escapeHtml(cita.descripcion || 'Sin descripción')}
                         </td>
                         <td class="py-4 px-6 bg-gray-50/50">
                             ${productosHtml}
