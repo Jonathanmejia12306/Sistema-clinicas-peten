@@ -102,8 +102,8 @@
                     <td class="py-3 px-4 text-center">
                         {% if c.fecha_cierre %}
                         <form action="{{ url_for('generar_reporte_financiero') }}" method="POST" target="_blank">
-                            <input type="hidden" name="fecha_inicio" value="{{ c.fecha_apertura[:10] }}">
-                            <input type="hidden" name="fecha_fin" value="{{ c.fecha_cierre[:10] }}">
+                            <input type="hidden" name="fecha_inicio" value="{{ c.fecha_apertura.strftime('%Y-%m-%d') if c.fecha_apertura is not none else '' }}">
+                            <input type="hidden" name="fecha_fin" value="{{ c.fecha_cierre.strftime('%Y-%m-%d') if c.fecha_cierre is not none else '' }}">
                             <!-- BOTÓN DE IMPRIMIR FILA -->
                             <button type="submit" class="text-[#23807A] hover:text-[#1b635e] p-2 rounded-full hover:bg-[#B8CFD3]/30 transition" title="Reimprimir Reporte">
                                 <i class="fas fa-print fa-lg"></i>

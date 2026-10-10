@@ -3,6 +3,7 @@ import os
 import uuid
 import time
 import io
+import re
 from flask import Flask, render_template, g, request, redirect, url_for, flash, jsonify, send_from_directory, send_file
 from datetime import date, datetime, timedelta
 from werkzeug.utils import secure_filename
@@ -12,6 +13,13 @@ from functools import wraps
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
+
+try:
+    import psycopg2
+    from psycopg2.extras import RealDictCursor
+except Exception:
+    psycopg2 = None
+    RealDictCursor = None
 
 # =============================================================================
 # --- 0. CONFIGURACIÓN DE ZONA HORARIA (GUATEMALA) ---
@@ -26,12 +34,126 @@ except AttributeError:
 # --- 1. CONFIGURACIÓN DE LA APLICACIÓN ---
 # =============================================================================
 
-DATABASE = 'clinica.db'
+DATABASE = os.getenv('DATABASE', 'clinica.db')
+DATABASE_URL = os.getenv('DATABASE_URL')
 UPLOAD_FOLDER = 'uploads'
 PRODUCT_UPLOAD_FOLDER = os.path.join(UPLOAD_FOLDER, 'productos')
 EXPENSE_UPLOAD_FOLDER = os.path.join(UPLOAD_FOLDER, 'comprobantes_gastos')
 
 app = Flask(__name__)
+
+
+def translate_sqlite_to_postgres(query):
+    if not DATABASE_URL:
+        return query
+
+    q = query
+    q = q.replace('?', '%s')
+    q = q.replace("datetime(", "timezone('America/Guatemala', ")
+    q = q.replace(", 'localtime')", ")")
+    q = q.replace("DATE('now', '-1 day', 'localtime')", "CURRENT_DATE - INTERVAL '1 day'")
+    q = q.replace("date('now', 'localtime')", "CURRENT_DATE")
+    q = q.replace("date('now', '+15 days', 'localtime')", "CURRENT_DATE + INTERVAL '15 days'")
+    q = q.replace("STRFTIME('%Y-%m', fecha)", "to_char(fecha, 'YYYY-MM')")
+    q = q.replace("STRFTIME('%Y-%m', 'now', 'localtime')", "to_char(CURRENT_DATE, 'YYYY-MM')")
+    q = q.replace("GROUP_CONCAT(", "STRING_AGG(")
+    q = q.replace(", ', ')", ", ', ')")
+    q = re.sub(r'\bdate\(([^()]*)\)', r'CAST(\1 AS DATE)', q, flags=re.IGNORECASE)
+    q = q.replace("DATE(fecha)", "CAST(fecha AS DATE)")
+    q = q.replace("DATE(fecha_venta)", "CAST(fecha_venta AS DATE)")
+    q = q.replace("DATE(fecha_abono)", "CAST(fecha_abono AS DATE)")
+    q = q.replace("DATE(v.fecha_venta)", "CAST(v.fecha_venta AS DATE)")
+    q = q.replace("DATE(a.fecha_abono)", "CAST(a.fecha_abono AS DATE)")
+    q = q.replace("datetime(v.fecha_venta, 'localtime')", "timezone('America/Guatemala', v.fecha_venta)")
+    q = q.replace("datetime(a.fecha_abono, 'localtime')", "timezone('America/Guatemala', a.fecha_abono)")
+    q = q.replace("datetime(mi.fecha, 'localtime')", "timezone('America/Guatemala', mi.fecha)")
+    q = q.replace("datetime(fecha_apertura, 'localtime')", "timezone('America/Guatemala', fecha_apertura)")
+    q = q.replace("datetime(fecha_cierre, 'localtime')", "timezone('America/Guatemala', fecha_cierre)")
+    q = q.replace("datetime(a.fecha_abono, 'localtime')", "timezone('America/Guatemala', a.fecha_abono)")
+    q = q.replace("datetime(v.fecha_venta, 'localtime') as fecha_venta", "timezone('America/Guatemala', v.fecha_venta) as fecha_venta")
+    q = q.replace("datetime(a.fecha_abono, 'localtime') as fecha_abono", "timezone('America/Guatemala', a.fecha_abono) as fecha_abono")
+    return q
+
+
+class CompatRow(dict):
+    def __getitem__(self, key):
+        if isinstance(key, int):
+            return list(self.values())[key]
+        return super().__getitem__(key)
+
+
+class CompatCursor:
+    def __init__(self, cursor):
+        self._cursor = cursor
+
+    def execute(self, query, params=()):
+        return self._cursor.execute(query, params)
+
+    def fetchone(self):
+        row = self._cursor.fetchone()
+        if row is None:
+            return None
+        if isinstance(row, dict):
+            return CompatRow(row)
+        return row
+
+    def fetchall(self):
+        rows = self._cursor.fetchall()
+        if not rows:
+            return []
+        if isinstance(rows[0], dict):
+            return [CompatRow(row) for row in rows]
+        return rows
+
+    def close(self):
+        self._cursor.close()
+
+    def commit(self):
+        self._cursor.connection.commit()
+
+    def rollback(self):
+        self._cursor.connection.rollback()
+
+    def __getattr__(self, name):
+        return getattr(self._cursor, name)
+
+
+class CompatDB:
+    def __init__(self, conn):
+        self.conn = conn
+        self.cursor_obj = None
+        if DATABASE_URL and psycopg2 is not None:
+            self.cursor_obj = CompatCursor(conn.cursor(cursor_factory=RealDictCursor))
+
+    def execute(self, query, params=()):
+        if not DATABASE_URL or psycopg2 is None:
+            return self.conn.execute(query, params)
+        sql = translate_sqlite_to_postgres(query)
+        self.cursor_obj.execute(sql, params)
+        return self.cursor_obj
+
+    def commit(self):
+        self.conn.commit()
+
+    def close(self):
+        if self.cursor_obj is not None:
+            self.cursor_obj.close()
+        self.conn.close()
+
+    def rollback(self):
+        self.conn.rollback()
+
+    def __getattr__(self, name):
+        return getattr(self.conn, name)
+
+
+def connect_db():
+    if DATABASE_URL and psycopg2 is not None:
+        conn = psycopg2.connect(DATABASE_URL)
+        return CompatDB(conn)
+    conn = sqlite3.connect(DATABASE)
+    conn.row_factory = sqlite3.Row
+    return conn
 app.config['SECRET_KEY'] = 'clave_maestra_clinica_46663627'
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['PRODUCT_UPLOAD_FOLDER'] = PRODUCT_UPLOAD_FOLDER
@@ -56,10 +178,15 @@ class User(UserMixin):
 
 @login_manager.user_loader
 def load_user(user_id):
-    conn = sqlite3.connect(DATABASE)
-    conn.row_factory = sqlite3.Row
-    user_db = conn.execute("SELECT * FROM usuarios WHERE id = ?", (user_id,)).fetchone()
-    conn.close()
+    conn = connect_db()
+    try:
+        if DATABASE_URL:
+            cursor = conn.execute("SELECT * FROM usuarios WHERE id = %s", (user_id,))
+        else:
+            cursor = conn.execute("SELECT * FROM usuarios WHERE id = ?", (user_id,))
+        user_db = cursor.fetchone()
+    finally:
+        conn.close()
     if user_db:
         return User(user_db['id'], user_db['username'], user_db['nombre'], user_db['rol'])
     return None
@@ -80,10 +207,15 @@ def login():
     if request.method == 'POST':
         username = request.form['username']
         password = request.form['password']
-        conn = sqlite3.connect(DATABASE)
-        conn.row_factory = sqlite3.Row
-        user_db = conn.execute("SELECT * FROM usuarios WHERE username = ?", (username,)).fetchone()
-        conn.close()
+        conn = connect_db()
+        try:
+            if DATABASE_URL:
+                cursor = conn.execute("SELECT * FROM usuarios WHERE username = %s", (username,))
+            else:
+                cursor = conn.execute("SELECT * FROM usuarios WHERE username = ?", (username,))
+            user_db = cursor.fetchone()
+        finally:
+            conn.close()
         if user_db and check_password_hash(user_db['password'], password):
             user_obj = User(user_db['id'], user_db['username'], user_db['nombre'], user_db['rol'])
             login_user(user_obj)
@@ -142,8 +274,7 @@ def eliminar_usuario(id):
 
 def get_db():
     if 'db' not in g:
-        g.db = sqlite3.connect(DATABASE)
-        g.db.row_factory = sqlite3.Row
+        g.db = connect_db()
     return g.db
 
 @app.teardown_appcontext
@@ -236,13 +367,13 @@ def dashboard():
 
         inv_stats = conn.execute("""
             SELECT
-                SUM(COALESCE(cantidad, 0) * COALESCE(precio_compra, 0)),
-                SUM(COALESCE(cantidad, 0) * COALESCE(precio_venta, 0))
+                SUM(COALESCE(cantidad, 0) * COALESCE(precio_compra, 0)) AS inv_costo,
+                SUM(COALESCE(cantidad, 0) * COALESCE(precio_venta, 0)) AS inv_venta
             FROM inventario
             WHERE tipo = 'Producto' AND is_deleted = 0
         """).fetchone()
-        costo_total = inv_stats[0] if inv_stats[0] else 0
-        venta_total = inv_stats[1] if inv_stats[1] else 0
+        costo_total = inv_stats['inv_costo'] or 0
+        venta_total = inv_stats['inv_venta'] or 0
         stats['inv_costo'] = costo_total
         stats['inv_venta'] = venta_total
         stats['inv_ganancia'] = venta_total - costo_total
@@ -357,7 +488,7 @@ def api_citas_historial_buscar():
     if filtro_estado in ['Completada', 'Cancelada']:
         sql += " AND c.estado = ?"
         params.append(filtro_estado)
-    sql += " GROUP BY c.id ORDER BY c.fecha_cita DESC, c.hora_cita DESC"
+    sql += " GROUP BY c.id, c.fecha_cita, c.hora_cita, c.descripcion, c.estado, p.nombre, p.apellido ORDER BY c.fecha_cita DESC, c.hora_cita DESC"
     citas_db = conn.execute(sql, tuple(params)).fetchall()
     return jsonify([dict(row) for row in citas_db])
 
@@ -1082,9 +1213,9 @@ def generar_reporte_financiero():
 
     reporte = {'fecha_inicio': fecha_inicio, 'fecha_fin': fecha_fin, 'total_ventas': ventas_data['total_vendido'] or 0, 'trx_count': ventas_data['total_trx'] or 0, 'ganancia_bruta': ganancia_data['ganancia_bruta'] or 0, 'ingreso_efectivo': ingresos_data['total_efectivo'] or 0, 'ingreso_bancos': ingresos_data['total_bancos'] or 0, 'creditos_nuevos': creditos_data['total_credito'] or 0, 'total_productos': tipo_data['total_productos'] or 0, 'total_servicios': tipo_data['total_servicios'] or 0}
     sql_base = "SELECT v.id, datetime(v.fecha_venta, 'localtime') as fecha, p.nombre, p.apellido, v.monto_total, v.metodo_pago, v.referencia_pago, v.saldo_pendiente, GROUP_CONCAT(vd.cantidad || 'x ' || i.nombre, ', ') as detalles_productos FROM ventas v JOIN pacientes p ON v.id_paciente = p.id JOIN ventas_detalle vd ON v.id = vd.id_venta JOIN inventario i ON vd.id_item_inventario = i.id WHERE DATE(v.fecha_venta) BETWEEN ? AND ? AND v.estado != 'Cancelada'"
-    lista_efectivo = db.execute(sql_base + " AND v.metodo_pago = 'Efectivo' GROUP BY v.id ORDER BY v.fecha_venta", (fecha_inicio, fecha_fin)).fetchall()
-    lista_otros = db.execute(sql_base + " AND v.metodo_pago NOT IN ('Efectivo', 'Crédito') GROUP BY v.id ORDER BY v.fecha_venta", (fecha_inicio, fecha_fin)).fetchall()
-    lista_credito = db.execute(sql_base + " AND v.metodo_pago = 'Crédito' GROUP BY v.id ORDER BY v.fecha_venta", (fecha_inicio, fecha_fin)).fetchall()
+    lista_efectivo = db.execute(sql_base + " AND v.metodo_pago = 'Efectivo' GROUP BY v.id, v.fecha_venta, p.nombre, p.apellido, v.monto_total, v.metodo_pago, v.referencia_pago, v.saldo_pendiente ORDER BY v.fecha_venta", (fecha_inicio, fecha_fin)).fetchall()
+    lista_otros = db.execute(sql_base + " AND v.metodo_pago NOT IN ('Efectivo', 'Crédito') GROUP BY v.id, v.fecha_venta, p.nombre, p.apellido, v.monto_total, v.metodo_pago, v.referencia_pago, v.saldo_pendiente ORDER BY v.fecha_venta", (fecha_inicio, fecha_fin)).fetchall()
+    lista_credito = db.execute(sql_base + " AND v.metodo_pago = 'Crédito' GROUP BY v.id, v.fecha_venta, p.nombre, p.apellido, v.monto_total, v.metodo_pago, v.referencia_pago, v.saldo_pendiente ORDER BY v.fecha_venta", (fecha_inicio, fecha_fin)).fetchall()
 
     return render_template('reporte_financiero.html', reporte=reporte, lista_efectivo=lista_efectivo, lista_otros=lista_otros, lista_credito=lista_credito)
 
