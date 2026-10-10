@@ -1,0 +1,124 @@
+{% extends 'layout.html' %}
+{% block title %}Historial de Cierres{% endblock %}
+
+{% block content %}
+<!-- ENCABEZADO -->
+<div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+    <div>
+        <h2 class="text-2xl md:text-3xl font-bold text-[#23807A]">Historial de Cierres</h2>
+        <p class="text-gray-600 text-sm mt-1">Consulta cierres anteriores y genera reportes.</p>
+    </div>
+</div>
+
+<!-- FORMULARIO DE REPORTE -->
+<div class="bg-[#B8CFD3]/30 border border-[#B8CFD3] p-6 rounded-lg shadow-sm mb-8">
+    <h3 class="text-lg font-bold text-[#23807A] mb-4 flex items-center">
+        <i class="fas fa-chart-line mr-2"></i> Generar Reporte Financiero
+    </h3>
+    
+    <form action="{{ url_for('generar_reporte_financiero') }}" method="POST" target="_blank" class="flex flex-col md:flex-row gap-4 md:items-end">
+        <div class="w-full md:w-auto">
+            <label class="block text-xs font-bold text-gray-700 mb-1 uppercase">Fecha Inicio</label>
+            <input type="date" name="fecha_inicio" required 
+                   class="w-full md:w-auto border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#23807A] focus:border-transparent bg-white">
+        </div>
+        
+        <div class="w-full md:w-auto">
+            <label class="block text-xs font-bold text-gray-700 mb-1 uppercase">Fecha Fin</label>
+            <input type="date" name="fecha_fin" required 
+                   class="w-full md:w-auto border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#23807A] focus:border-transparent bg-white">
+        </div>
+        
+        <!-- BOTÓN CORREGIDO CON COLOR DIRECTO -->
+        <button type="submit" class="w-full md:w-auto bg-[#23807A] text-white px-6 py-2.5 rounded-md hover:bg-[#1b635e] transition font-bold shadow-md flex items-center justify-center">
+            <i class="fas fa-file-pdf mr-2"></i> Generar PDF
+        </button>
+    </form>
+</div>
+
+<!-- TABLA DE CIERRES -->
+<div class="bg-white p-4 md:p-8 rounded-lg shadow-lg border border-[#B8CFD3]/50 w-full">
+    <h3 class="text-xl font-bold text-gray-700 mb-4">Últimos Cierres</h3>
+    
+    <!-- Contenedor con scroll horizontal para móviles -->
+    <div class="overflow-x-auto rounded-lg border border-[#B8CFD3]">
+        <table class="min-w-full bg-white">
+            <!-- CABECERA CON COLOR MÁS FUERTE -->
+            <thead class="bg-[#B8CFD3] text-gray-800 text-xs uppercase font-bold">
+                <tr>
+                    <th class="py-3 px-4 text-left whitespace-nowrap">ID</th>
+                    <th class="py-3 px-4 text-left whitespace-nowrap">Fecha Apertura</th>
+                    <th class="py-3 px-4 text-left whitespace-nowrap">Fecha Cierre</th>
+                    <th class="py-3 px-4 text-right whitespace-nowrap">Inicial</th>
+                    <th class="py-3 px-4 text-right whitespace-nowrap">Calculado</th>
+                    <th class="py-3 px-4 text-right whitespace-nowrap">Real</th>
+                    <th class="py-3 px-4 text-center whitespace-nowrap">Diferencia</th>
+                    <th class="py-3 px-4 text-center whitespace-nowrap">Acciones</th>
+                </tr>
+            </thead>
+            <tbody class="text-gray-700 text-sm font-light divide-y divide-gray-200">
+                {% for c in cierres %}
+                <tr class="hover:bg-[#F3E2DA]/30 transition">
+                    <td class="py-3 px-4 font-bold text-[#23807A]">#{{ c.id }}</td>
+                    <td class="py-3 px-4 whitespace-nowrap">{{ c.fecha_apertura }}</td>
+                    <td class="py-3 px-4 whitespace-nowrap font-bold">
+                        {% if c.fecha_cierre %}
+                            {{ c.fecha_cierre }}
+                        {% else %}
+                            <!-- ETIQUETA ABIERTA -->
+                            <span class="text-[#8ABCA5] font-bold animate-pulse">Abierta</span>
+                        {% endif %}
+                    </td>
+                    <td class="py-3 px-4 text-right font-medium">Q{{ "%.2f"|format(c.monto_inicial) }}</td>
+                    <td class="py-3 px-4 text-right text-gray-500">
+                        {% if c.monto_final_calculado is not none %}
+                            Q{{ "%.2f"|format(c.monto_final_calculado) }}
+                        {% else %} - {% endif %}
+                    </td>
+                    <td class="py-3 px-4 text-right font-bold">
+                        {% if c.monto_final_real is not none %}
+                            Q{{ "%.2f"|format(c.monto_final_real) }}
+                        {% else %} - {% endif %}
+                    </td>
+                    
+                    <!-- ESTADOS Y DIFERENCIAS -->
+                    <td class="py-3 px-4 text-center">
+                        {% if c.estado == 'Abierta' %}
+                            <span class="bg-[#EDC58C]/30 text-yellow-800 py-1 px-3 rounded-full text-xs font-bold border border-[#EDC58C]">En curso</span>
+                        {% else %}
+                            {# Definimos variable segura #}
+                            {% set dif = c.diferencia if c.diferencia is not none else 0 %}
+                            
+                            {% if dif == 0 %}
+                                <span class="bg-[#8ABCA5]/20 text-[#23807A] py-1 px-3 rounded-full text-xs font-bold border border-[#8ABCA5]">Cuadre</span>
+                            {% elif dif > 0 %}
+                                <span class="bg-blue-100 text-blue-800 py-1 px-3 rounded-full text-xs font-bold border border-blue-200">+Q{{ "%.2f"|format(dif) }}</span>
+                            {% else %}
+                                <span class="bg-red-100 text-red-800 py-1 px-3 rounded-full text-xs font-bold border border-red-200">-Q{{ "%.2f"|format(dif|abs) }}</span>
+                            {% endif %}
+                        {% endif %}
+                    </td>
+
+                    <td class="py-3 px-4 text-center">
+                        {% if c.fecha_cierre %}
+                        <form action="{{ url_for('generar_reporte_financiero') }}" method="POST" target="_blank">
+                            <input type="hidden" name="fecha_inicio" value="{{ c.fecha_apertura[:10] }}">
+                            <input type="hidden" name="fecha_fin" value="{{ c.fecha_cierre[:10] }}">
+                            <!-- BOTÓN DE IMPRIMIR FILA -->
+                            <button type="submit" class="text-[#23807A] hover:text-[#1b635e] p-2 rounded-full hover:bg-[#B8CFD3]/30 transition" title="Reimprimir Reporte">
+                                <i class="fas fa-print fa-lg"></i>
+                            </button>
+                        </form>
+                        {% else %}
+                            <span class="text-gray-300 text-xs">-</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="8" class="text-center py-8 text-gray-400 italic">No hay cierres registrados.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

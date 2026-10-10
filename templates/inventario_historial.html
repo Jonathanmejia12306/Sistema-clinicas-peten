@@ -1,0 +1,172 @@
+{% extends 'layout.html' %}
+{% block title %}Historial de Movimientos{% endblock %}
+
+{% block content %}
+<style>
+    :root {
+        --color-petroleo: #1F7A7A;
+        --color-salvia: #7FB2B2;
+        --color-arena: #EDC988;
+        --color-fondo: #F3E6E0;
+        --color-neutro: #BCCCD1;
+    }
+
+    .text-petroleo { color: var(--color-petroleo); }
+
+    /* Botones */
+    .btn-secondary {
+        background-color: var(--color-neutro);
+        color: #374151;
+        transition: background-color 0.3s;
+    }
+    .btn-secondary:hover { background-color: #9fb3b9; }
+
+    /* Inputs */
+    .input-custom {
+        border: 1px solid var(--color-neutro);
+        transition: all 0.3s;
+    }
+    .input-custom:focus {
+        outline: none;
+        border-color: var(--color-petroleo);
+        box-shadow: 0 0 0 3px rgba(31, 122, 122, 0.1);
+    }
+
+    /* Tabla */
+    .table-header {
+        background-color: var(--color-salvia);
+        color: white;
+    }
+
+    /* Cards */
+    .content-card {
+        border-top: 5px solid var(--color-arena);
+    }
+</style>
+
+<!-- Encabezado -->
+<div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+    <div>
+        <h2 class="text-3xl font-bold text-petroleo">Historial de Inventario</h2>
+        <p class="text-gray-500 mt-1">Auditoría completa de entradas y salidas de productos.</p>
+    </div>
+    <a href="{{ url_for('inventario') }}" class="btn-secondary px-4 py-2 rounded-md font-medium shadow-sm w-full md:w-auto text-center flex items-center justify-center">
+        <i class="fas fa-arrow-left mr-2"></i>Volver al Inventario
+    </a>
+</div>
+
+<div class="bg-white p-6 md:p-8 rounded-lg shadow-md w-full content-card">
+    
+    <!-- Barra de Búsqueda -->
+    <div class="mb-6 relative">
+        <label class="block text-gray-700 font-bold mb-2 text-sm">Buscar Movimiento</label>
+        <div class="relative">
+            <input type="text" id="historialInventarioSearchInput" 
+                   placeholder="Escribe el nombre del producto, 'Entrada', 'Venta'..." 
+                   class="input-custom w-full pl-10 pr-4 py-2 rounded-md bg-gray-50 focus:bg-white">
+            <i class="fas fa-search absolute left-3 top-3 text-gray-400"></i>
+        </div>
+    </div>
+
+    <!-- Tabla -->
+    <div class="overflow-x-auto rounded-t-lg border border-gray-100">
+        <table class="min-w-full bg-white">
+            <thead class="table-header">
+                <tr>
+                    <th class="py-3 px-6 text-left text-xs font-semibold uppercase tracking-wider">Fecha</th>
+                    <th class="py-3 px-6 text-left text-xs font-semibold uppercase tracking-wider">Ítem</th>
+                    <th class="py-3 px-6 text-left text-xs font-semibold uppercase tracking-wider">Tipo</th>
+                    <th class="py-3 px-6 text-left text-xs font-semibold uppercase tracking-wider">Cantidad</th>
+                    <th class="py-3 px-6 text-left text-xs font-semibold uppercase tracking-wider">Descripción / Motivo</th>
+                </tr>
+            </thead>
+            <tbody id="historialInventarioTbody" class="divide-y divide-gray-200">
+                <tr><td colspan="5" class="py-10 text-center text-gray-500"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando historial...</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+    const searchInput = document.getElementById('historialInventarioSearchInput');
+    const historialTbody = document.getElementById('historialInventarioTbody');
+
+    function actualizarHistorialInventario() {
+        const query = searchInput.value;
+        const apiUrl = `/api/inventario/historial/buscar?q=${encodeURIComponent(query)}`;
+
+        fetch(apiUrl)
+            .then(response => response.json())
+            .then(data => {
+                historialTbody.innerHTML = ''; // Limpiar la tabla
+
+                if (data.length === 0) {
+                    historialTbody.innerHTML = `
+                        <tr>
+                            <td colspan="5" class="py-8 text-center text-gray-400 italic">
+                                <i class="fas fa-search mb-2 block text-2xl text-gray-300"></i>
+                                No se encontraron movimientos.
+                            </td>
+                        </tr>`;
+                } else {
+                    data.forEach(mov => {
+                        const row = document.createElement('tr');
+                        row.className = 'hover:bg-gray-50 transition-colors';
+                        
+                        // Lógica de colores para Badges
+                        let badgeHtml = '';
+                        let cantidadClass = '';
+                        let cantidadSign = '';
+
+                        // Normalizar texto para comparación
+                        const tipo = mov.tipo_movimiento || '';
+
+                        if (tipo.includes('Entrada')) {
+                            badgeHtml = `<span class="px-2 py-1 text-xs font-bold rounded-full bg-green-100 text-green-700 border border-green-200">
+                                <i class="fas fa-arrow-down mr-1"></i>Entrada
+                            </span>`;
+                            cantidadClass = 'text-green-600';
+                            cantidadSign = '+';
+                        } else if (tipo.includes('Venta')) {
+                            badgeHtml = `<span class="px-2 py-1 text-xs font-bold rounded-full bg-blue-100 text-blue-700 border border-blue-200">
+                                <i class="fas fa-shopping-cart mr-1"></i>Venta
+                            </span>`;
+                            cantidadClass = 'text-blue-600';
+                            cantidadSign = '-';
+                        } else if (tipo.includes('Salida')) {
+                            badgeHtml = `<span class="px-2 py-1 text-xs font-bold rounded-full bg-red-100 text-red-700 border border-red-200">
+                                <i class="fas fa-arrow-up mr-1"></i>Salida
+                            </span>`;
+                            cantidadClass = 'text-red-600';
+                            cantidadSign = '-';
+                        } else {
+                            badgeHtml = `<span class="px-2 py-1 text-xs font-bold rounded-full bg-gray-100 text-gray-600">
+                                ${tipo}
+                            </span>`;
+                            cantidadClass = 'text-gray-600';
+                        }
+                        
+                        row.innerHTML = `
+                            <td class="py-4 px-6 text-sm text-gray-500 whitespace-nowrap">${mov.fecha.substring(0, 16)}</td>
+                            <td class="py-4 px-6 font-semibold text-gray-700">${mov.nombre_item}</td>
+                            <td class="py-4 px-6">${badgeHtml}</td>
+                            <td class="py-4 px-6 font-bold text-lg ${cantidadClass}">${cantidadSign}${mov.cantidad}</td>
+                            <td class="py-4 px-6 text-sm text-gray-500 italic">${mov.descripcion || '-'}</td>
+                        `;
+                        historialTbody.appendChild(row);
+                    });
+                }
+            })
+            .catch(error => {
+                console.error('Error al buscar en el historial:', error);
+                historialTbody.innerHTML = `<tr><td colspan="5" class="py-6 text-center text-red-500">Error al cargar el historial.</td></tr>`;
+            });
+    }
+
+    // Cargar los datos iniciales al cargar la página
+    document.addEventListener('DOMContentLoaded', actualizarHistorialInventario);
+
+    // Añadir listener para que se actualice en tiempo real
+    searchInput.addEventListener('input', actualizarHistorialInventario);
+</script>
+{% endblock %}

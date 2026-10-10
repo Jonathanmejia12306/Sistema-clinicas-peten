@@ -1,0 +1,162 @@
+{% extends 'layout.html' %}
+{% block title %}Historial de Citas{% endblock %}
+
+{% block content %}
+<style>
+    :root {
+        --color-petroleo: #1F7A7A;
+        --color-salvia: #7FB2B2;
+        --color-arena: #EDC988;
+        --color-fondo: #F3E6E0;
+        --color-neutro: #BCCCD1;
+    }
+    
+    .btn-back {
+        background-color: var(--color-neutro);
+        color: #374151;
+        transition: 0.3s;
+    }
+    .btn-back:hover { background-color: #9fb3b9; }
+
+    .table-header {
+        background-color: var(--color-salvia);
+        color: white;
+    }
+    
+    /* Estilo para la lista de productos */
+    .product-list {
+        font-size: 0.85rem;
+        color: #4b5563;
+        line-height: 1.4;
+    }
+</style>
+
+<div class="flex justify-between items-center mb-6">
+    <h2 class="text-3xl font-bold text-[#23807A]">Historial de Citas</h2>
+    <a href="{{ url_for('citas') }}" class="btn-back px-4 py-2 rounded-md shadow-sm font-medium flex items-center">
+        <i class="fas fa-arrow-left mr-2"></i> Volver a Citas Pendientes
+    </a>
+</div>
+
+<!-- Filtros -->
+<div class="bg-white p-6 rounded-lg shadow-md border-t-4 border-[#EDC988] mb-6">
+    <h3 class="text-lg font-bold text-gray-700 mb-4">Citas Completadas y Canceladas</h3>
+    
+    <div class="flex flex-col md:flex-row gap-4">
+        <div class="relative flex-grow">
+            <input type="text" id="searchInput" class="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#23807A]" placeholder="Buscar por nombre de paciente...">
+            <i class="fas fa-search absolute left-3 top-3 text-gray-400"></i>
+        </div>
+        
+        <div class="flex items-center gap-2">
+            <label class="text-gray-600 font-bold text-sm">Estado:</label>
+            <select id="filtroEstado" class="border border-gray-300 rounded-md py-2 px-3 focus:outline-none focus:ring-2 focus:ring-[#23807A] bg-white">
+                <option value="Todos">Todos</option>
+                <option value="Completada">Completadas</option>
+                <option value="Cancelada">Canceladas</option>
+            </select>
+        </div>
+    </div>
+</div>
+
+<!-- Tabla -->
+<div class="bg-white rounded-lg shadow-lg overflow-hidden border border-gray-200">
+    <div class="overflow-x-auto">
+        <table class="min-w-full bg-white">
+            <thead class="table-header">
+                <tr>
+                    <th class="py-3 px-6 text-left text-xs font-bold uppercase tracking-wider">Paciente</th>
+                    <th class="py-3 px-6 text-left text-xs font-bold uppercase tracking-wider">Fecha / Hora</th>
+                    <th class="py-3 px-6 text-left text-xs font-bold uppercase tracking-wider w-1/4">Motivo Cita</th>
+                    <!-- NUEVA COLUMNA -->
+                    <th class="py-3 px-6 text-left text-xs font-bold uppercase tracking-wider w-1/4">Consumo / Venta</th> 
+                    <th class="py-3 px-6 text-center text-xs font-bold uppercase tracking-wider">Estado</th>
+                </tr>
+            </thead>
+            <tbody id="citasTbody" class="divide-y divide-gray-200 text-sm">
+                <tr>
+                    <td colspan="5" class="py-8 text-center text-gray-500">Cargando historial...</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+    const searchInput = document.getElementById('searchInput');
+    const filtroEstado = document.getElementById('filtroEstado');
+    const citasTbody = document.getElementById('citasTbody');
+
+    function cargarHistorial() {
+        const q = searchInput.value;
+        const estado = filtroEstado.value;
+        
+        fetch(`/api/citas/historial/buscar?q=${encodeURIComponent(q)}&estado=${estado}`)
+            .then(response => response.json())
+            .then(data => {
+                citasTbody.innerHTML = '';
+                
+                if (data.length === 0) {
+                    citasTbody.innerHTML = `<tr><td colspan="5" class="py-8 text-center text-gray-500 italic">No se encontraron registros.</td></tr>`;
+                    return;
+                }
+
+                data.forEach(cita => {
+                    const row = document.createElement('tr');
+                    row.className = "hover:bg-gray-50 transition";
+
+                    // Formato de Estado
+                    let estadoHtml = '';
+                    if (cita.estado === 'Completada') {
+                        estadoHtml = `<span class="bg-green-100 text-green-800 px-3 py-1 rounded-full text-xs font-bold shadow-sm"><i class="fas fa-check mr-1"></i>Completada</span>`;
+                    } else {
+                        estadoHtml = `<span class="bg-red-100 text-red-800 px-3 py-1 rounded-full text-xs font-bold shadow-sm"><i class="fas fa-times mr-1"></i>Cancelada</span>`;
+                    }
+                    
+                    // Formato de Productos (Si es null, poner guion)
+                    let productosHtml = '';
+                    if (cita.productos_usados) {
+                        // Convertir la lista separada por comas en algo más visual si se desea, o dejar texto plano
+                        productosHtml = `<div class="product-list font-medium text-gray-700">
+                                            <i class="fas fa-shopping-cart text-[#23807A] mr-1 text-xs"></i> 
+                                            ${cita.productos_usados}
+                                         </div>`;
+                    } else {
+                        productosHtml = '<span class="text-gray-400 text-xs">- Sin venta registrada -</span>';
+                    }
+
+                    row.innerHTML = `
+                        <td class="py-4 px-6 font-bold text-gray-800">
+                            ${cita.nombre} ${cita.apellido}
+                        </td>
+                        <td class="py-4 px-6 text-gray-600">
+                            <div class="font-medium">${cita.fecha_cita}</div>
+                            <div class="text-xs text-[#23807A] font-bold">${cita.hora_cita}</div>
+                        </td>
+                        <td class="py-4 px-6 text-gray-500 italic">
+                            ${cita.descripcion || 'Sin descripción'}
+                        </td>
+                        <td class="py-4 px-6 bg-gray-50/50">
+                            ${productosHtml}
+                        </td>
+                        <td class="py-4 px-6 text-center">
+                            ${estadoHtml}
+                        </td>
+                    `;
+                    citasTbody.appendChild(row);
+                });
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                citasTbody.innerHTML = `<tr><td colspan="5" class="py-8 text-center text-red-500">Error al cargar datos.</td></tr>`;
+            });
+    }
+
+    // Event Listeners
+    searchInput.addEventListener('input', cargarHistorial);
+    filtroEstado.addEventListener('change', cargarHistorial);
+
+    // Cargar al inicio
+    document.addEventListener('DOMContentLoaded', cargarHistorial);
+</script>
+{% endblock %}

@@ -1,0 +1,63 @@
+{% extends 'layout.html' %}
+{% block title %}Gestión de Usuarios{% endblock %}
+{% block content %}
+<div class="bg-white p-6 rounded-lg shadow-md">
+    <div class="flex justify-between items-center mb-6">
+        <h2 class="text-2xl font-bold text-clinica-primary">Usuarios del Sistema</h2>
+        <button onclick="document.getElementById('modalUsuario').classList.remove('hidden')" class="bg-clinica-primary text-white px-4 py-2 rounded-md hover:bg-clinica-dark">
+            <i class="fas fa-user-plus mr-2"></i> Nuevo Usuario
+        </button>
+    </div>
+
+    <table class="w-full text-left border-collapse">
+        <thead>
+            <tr class="border-b bg-gray-50">
+                <th class="p-3">Nombre</th>
+                <th class="p-3">Usuario</th>
+                <th class="p-3">Rol</th>
+                <th class="p-3">Acciones</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for u in usuarios %}
+            <tr class="border-b hover:bg-gray-50">
+                <td class="p-3">{{ u.nombre }}</td>
+                <td class="p-3">{{ u.username }}</td>
+                <td class="p-3">
+                    <span class="px-2 py-1 rounded text-xs {{ 'bg-purple-100 text-purple-700' if u.rol == 'admin' else 'bg-blue-100 text-blue-700' }}">
+                        {{ u.rol | upper }}
+                    </span>
+                </td>
+                <td class="p-3">
+                    {% if u.id != current_user.id %}
+                    <form action="{{ url_for('eliminar_usuario', id=u.id) }}" method="POST" onsubmit="return confirm('¿Eliminar este usuario?')">
+                        <button class="text-red-500 hover:text-red-700"><i class="fas fa-trash"></i></button>
+                    </form>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<!-- Modal Simple para Nuevo Usuario -->
+<div id="modalUsuario" class="fixed inset-0 bg-black/50 hidden flex items-center justify-center">
+    <div class="bg-white p-8 rounded-lg w-96">
+        <h3 class="text-xl font-bold mb-4">Crear Nuevo Usuario</h3>
+        <form action="{{ url_for('nuevo_usuario') }}" method="POST" class="space-y-4">
+            <input type="text" name="nombre" placeholder="Nombre Completo" class="w-full border p-2 rounded" required>
+            <input type="text" name="username" placeholder="Nombre de Usuario" class="w-full border p-2 rounded" required>
+            <input type="password" name="password" placeholder="Contraseña" class="w-full border p-2 rounded" required>
+            <select name="rol" class="w-full border p-2 rounded">
+                <option value="usuario">Usuario (Restringido)</option>
+                <option value="admin">Administrador (Total)</option>
+            </select>
+            <div class="flex justify-end space-x-2">
+                <button type="button" onclick="document.getElementById('modalUsuario').classList.add('hidden')" class="bg-gray-300 px-4 py-2 rounded">Cancelar</button>
+                <button type="submit" class="bg-clinica-primary text-white px-4 py-2 rounded">Guardar</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

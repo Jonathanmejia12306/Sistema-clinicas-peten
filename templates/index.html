@@ -1,0 +1,234 @@
+{% extends 'layout.html' %}
+
+{% block title %}Dashboard - Clínica{% endblock %}
+
+{% block content %}
+<style>
+    :root {
+        --color-petroleo: #1F7A7A;
+        --color-salvia: #7FB2B2;
+        --color-arena: #EDC988;
+        --color-fondo: #F3E6E0;
+        --color-neutro: #BCCCD1;
+    }
+    .text-petroleo { color: var(--color-petroleo); }
+    
+    /* Tarjetas de Estadísticas */
+    .stat-card {
+        background: white;
+        border-radius: 0.5rem;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        transition: transform 0.2s;
+        border-left: 5px solid transparent;
+    }
+    .stat-card:hover { transform: translateY(-3px); }
+
+    .border-petroleo { border-left-color: var(--color-petroleo); }
+    .border-verde { border-left-color: #10B981; }
+    .border-rojo { border-left-color: #EF4444; }
+    .border-arena { border-left-color: var(--color-arena); }
+    /* Nuevos bordes para finanzas */
+    .border-gris { border-left-color: #6B7280; }
+    .border-azul { border-left-color: #3B82F6; }
+    .border-indigo { border-left-color: #6366F1; }
+
+    /* Accesos rápidos */
+    .quick-btn {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 1.5rem;
+        background: white;
+        border: 1px solid var(--color-neutro);
+        border-radius: 0.5rem;
+        color: #4B5563;
+        transition: all 0.2s;
+    }
+    .quick-btn:hover {
+        background-color: var(--color-fondo);
+        border-color: var(--color-petroleo);
+        color: var(--color-petroleo);
+    }
+</style>
+
+<!-- Encabezado -->
+<div class="flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
+    <div>
+        <h2 class="text-3xl font-bold text-petroleo">Panel de Control</h2>
+        <p class="text-gray-500 mt-1" id="current-date">Cargando fecha...</p>
+    </div>
+</div>
+
+<!-- 1. Grid de Estadísticas OPERATIVAS -->
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
+    <!-- Total Pacientes -->
+    <div class="stat-card border-petroleo p-6 flex justify-between items-center">
+        <div>
+            <p class="text-xs font-bold text-gray-400 uppercase">Pacientes Activos</p>
+            <p class="text-3xl font-bold text-gray-800">{{ stats.total_pacientes }}</p>
+        </div>
+        <div class="bg-blue-50 p-3 rounded-full text-petroleo"><i class="fas fa-users text-xl"></i></div>
+    </div>
+
+    <!-- Ventas Hoy -->
+    <div class="stat-card border-verde p-6 flex justify-between items-center">
+        <div>
+            <p class="text-xs font-bold text-gray-400 uppercase">Ventas de Hoy</p>
+            <p class="text-3xl font-bold text-gray-800">Q{{ stats.ventas_hoy }}</p>
+        </div>
+        <div class="bg-green-50 p-3 rounded-full text-green-600"><i class="fas fa-cash-register text-xl"></i></div>
+    </div>
+
+    <!-- Bajo Stock -->
+    <div class="stat-card border-rojo p-6 flex justify-between items-center">
+        <div>
+            <p class="text-xs font-bold text-gray-400 uppercase">Stock Bajo (< 5)</p>
+            <p class="text-3xl font-bold text-red-600">{{ stats.bajo_stock }}</p>
+        </div>
+        <div class="bg-red-50 p-3 rounded-full text-red-500"><i class="fas fa-exclamation-triangle text-xl"></i></div>
+    </div>
+
+    <!-- Por Vencer -->
+    <div class="stat-card border-arena p-6 flex justify-between items-center">
+        <div>
+            <p class="text-xs font-bold text-gray-400 uppercase">Por Vencer (90d)</p>
+            <p class="text-3xl font-bold text-yellow-600">{{ stats.por_vencer }}</p>
+        </div>
+        <div class="bg-yellow-50 p-3 rounded-full text-yellow-600"><i class="fas fa-hourglass-half text-xl"></i></div>
+    </div>
+</div>
+
+<!-- 2. NUEVA SECCIÓN: VALORACIÓN DE INVENTARIO -->
+<h3 class="text-lg font-bold text-gray-700 mb-3 flex items-center">
+    <i class="fas fa-boxes mr-2 text-gray-500"></i> Valoración de Inventario (Stock Actual)
+</h3>
+<div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+    <!-- Costo (Inversión) -->
+    <div class="stat-card border-gris p-6 flex justify-between items-center bg-gray-50">
+        <div>
+            <p class="text-xs font-bold text-gray-500 uppercase">Inversión (Costo Compra)</p>
+            <p class="text-2xl font-bold text-gray-700">Q{{ "{:,.2f}".format(stats.inv_costo) }}</p>
+        </div>
+        <div class="bg-white p-2 rounded-full text-gray-500 border border-gray-200"><i class="fas fa-tags"></i></div>
+    </div>
+
+    <!-- Venta (Proyección) -->
+    <div class="stat-card border-azul p-6 flex justify-between items-center bg-blue-50">
+        <div>
+            <p class="text-xs font-bold text-blue-500 uppercase">Valor Venta (Proyección)</p>
+            <p class="text-2xl font-bold text-blue-700">Q{{ "{:,.2f}".format(stats.inv_venta) }}</p>
+        </div>
+        <div class="bg-white p-2 rounded-full text-blue-500 border border-blue-200"><i class="fas fa-chart-line"></i></div>
+    </div>
+
+    <!-- Ganancia Estimada -->
+    <div class="stat-card border-indigo p-6 flex justify-between items-center bg-indigo-50">
+        <div>
+            <p class="text-xs font-bold text-indigo-500 uppercase">Ganancia Estimada</p>
+            <p class="text-2xl font-bold text-indigo-700">Q{{ "{:,.2f}".format(stats.inv_ganancia) }}</p>
+        </div>
+        <div class="bg-white p-2 rounded-full text-indigo-500 border border-indigo-200"><i class="fas fa-coins"></i></div>
+    </div>
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
+    
+    <!-- 3. PRÓXIMAS CITAS (Ocupa 2 columnas) -->
+    <div class="lg:col-span-2 bg-white rounded-lg shadow-md border-t-4 border-petroleo p-6">
+        <div class="flex justify-between items-center mb-4">
+            <h3 class="text-lg font-bold text-gray-700 flex items-center">
+                <i class="far fa-calendar-alt mr-2 text-petroleo"></i> Próximas Citas
+            </h3>
+            <a href="{{ url_for('citas') }}" class="text-sm text-blue-600 hover:underline">Ver todas</a>
+        </div>
+        
+        <div class="overflow-x-auto">
+            <table class="min-w-full">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="py-2 px-4 text-left text-xs font-bold text-gray-500 uppercase">Fecha/Hora</th>
+                        <th class="py-2 px-4 text-left text-xs font-bold text-gray-500 uppercase">Paciente</th>
+                        <th class="py-2 px-4 text-left text-xs font-bold text-gray-500 uppercase">Motivo</th>
+                        <th class="py-2 px-4 text-right"></th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-100">
+                    {% if proximas_citas %}
+                        {% for cita in proximas_citas %}
+                        <tr class="hover:bg-gray-50">
+                            <td class="py-3 px-4 whitespace-nowrap">
+                                <div class="text-sm font-bold text-gray-700">{{ cita.hora_cita }}</div>
+                                <div class="text-xs text-gray-500">{{ cita.fecha_cita }}</div>
+                            </td>
+                            <td class="py-3 px-4 font-medium text-petroleo">
+                                {{ cita.nombre }} {{ cita.apellido }}
+                            </td>
+                            <td class="py-3 px-4 text-sm text-gray-600 truncate max-w-xs">
+                                {{ cita.descripcion or 'Sin descripción' }}
+                            </td>
+                            <td class="py-3 px-4 text-right">
+                                <a href="{{ url_for('citas') }}" class="text-xs bg-blue-100 text-blue-600 px-2 py-1 rounded hover:bg-blue-200">
+                                    Gestionar
+                                </a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    {% else %}
+                        <tr>
+                            <td colspan="4" class="py-8 text-center text-gray-400">
+                                <i class="far fa-calendar-check text-3xl mb-2"></i>
+                                <p>No hay citas pendientes próximas.</p>
+                            </td>
+                        </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- 4. ACCESOS RÁPIDOS (Ocupa 1 columna) -->
+    <div class="bg-white rounded-lg shadow-md border-t-4 border-arena p-6">
+        <h3 class="text-lg font-bold text-gray-700 mb-4 flex items-center">
+            <i class="fas fa-bolt mr-2 text-yellow-500"></i> Acciones Rápidas
+        </h3>
+        <div class="grid grid-cols-2 gap-3">
+            <a href="{{ url_for('cita_nueva') }}" class="quick-btn">
+                <i class="fas fa-calendar-plus text-2xl mb-2 text-petroleo"></i>
+                <span class="text-xs font-bold">Agendar</span>
+            </a>
+            <a href="{{ url_for('venta_nueva') }}" class="quick-btn">
+                <i class="fas fa-shopping-cart text-2xl mb-2 text-green-600"></i>
+                <span class="text-xs font-bold">Vender</span>
+            </a>
+            <a href="{{ url_for('nuevo_paciente') }}" onclick="event.preventDefault(); document.getElementById('btn-paciente-modal').click();" class="quick-btn cursor-pointer">
+                <i class="fas fa-user-plus text-2xl mb-2 text-blue-500"></i>
+                <span class="text-xs font-bold">Paciente</span>
+            </a>
+            <a href="{{ url_for('historial_cierres') }}" class="quick-btn">
+                <i class="fas fa-file-invoice-dollar text-2xl mb-2 text-gray-600"></i>
+                <span class="text-xs font-bold">Cierres</span>
+            </a>
+        </div>
+        
+        <a href="{{ url_for('pacientes') }}" id="btn-paciente-modal" class="hidden"></a>
+
+        <div class="mt-6 bg-blue-50 p-4 rounded-lg border border-blue-100">
+            <p class="text-xs text-blue-800 font-bold mb-1">💡 Tip del sistema:</p>
+            <p class="text-xs text-blue-600">Recuerda cerrar caja al final del día para mantener el control de efectivo.</p>
+            <a href="{{ url_for('ventas') }}" class="block mt-2 text-xs font-bold text-blue-700 hover:underline text-right">Ir a Caja →</a>
+        </div>
+    </div>
+</div>
+
+<script>
+    document.addEventListener("DOMContentLoaded", function() {
+        const dateElement = document.getElementById('current-date');
+        const now = new Date();
+        const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+        let dateString = now.toLocaleDateString('es-ES', options);
+        dateString = dateString.charAt(0).toUpperCase() + dateString.slice(1);
+        dateElement.textContent = dateString;
+    });
+</script>
+{% endblock %}

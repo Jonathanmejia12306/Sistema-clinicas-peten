@@ -1,0 +1,387 @@
+{% extends "layout.html" %}
+
+{% block title %}{{ accion }} Expediente{% endblock %}
+
+{% block content %}
+<style>
+    /* --- VARIABLES Y COLORES --- */
+    :root {
+        --color-petroleo: #1F7A7A;
+        --color-salvia: #7FB2B2;
+        --color-arena: #EDC988;
+        --color-fondo: #F3E6E0;
+        --color-neutro: #BCCCD1;
+    }
+
+    /* --- ESTILOS GENERALES --- */
+    .text-petroleo { color: var(--color-petroleo); }
+    .bg-petroleo { background-color: var(--color-petroleo); }
+    .bg-salvia { background-color: var(--color-salvia); }
+    .border-arena { border-color: var(--color-arena); }
+
+    /* Inputs */
+    .input-custom {
+        border: 1px solid var(--color-neutro);
+        transition: all 0.3s;
+        width: 100%;
+        border-radius: 0.375rem; /* rounded-md */
+        padding: 0.5rem 0.75rem;
+    }
+    .input-custom:focus {
+        outline: none;
+        border-color: var(--color-petroleo);
+        box-shadow: 0 0 0 3px rgba(31, 122, 122, 0.15);
+    }
+    .input-readonly {
+        background-color: #f9fafb;
+        border-color: #e5e7eb;
+        color: #6b7280;
+    }
+
+    /* Botones */
+    .btn-primary {
+        background-color: var(--color-petroleo);
+        color: white;
+        transition: background-color 0.3s;
+    }
+    .btn-primary:hover { background-color: #165e5e; }
+
+    .btn-secondary {
+        background-color: var(--color-neutro);
+        color: #374151;
+        transition: background-color 0.3s;
+    }
+    .btn-secondary:hover { background-color: #9fb3b9; }
+
+    /* Tarjetas */
+    .content-card {
+        background: white;
+        border-radius: 0.5rem;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        border-top: 5px solid var(--color-arena);
+        margin-bottom: 2rem;
+        padding: 2rem;
+    }
+
+    .section-title {
+        color: var(--color-petroleo);
+        font-weight: bold;
+        font-size: 1.25rem;
+        margin-bottom: 1.5rem;
+        border-bottom: 2px solid #f3f4f6;
+        padding-bottom: 0.5rem;
+    }
+
+    /* Comparativa Skincare */
+    .skincare-box {
+        padding: 1.5rem;
+        border-radius: 0.5rem;
+    }
+    .skincare-old { background-color: #FFF7ED; border: 1px solid #FFEDD5; } /* Naranja muy suave */
+    .skincare-new { background-color: #F0FDF4; border: 1px solid #DCFCE7; } /* Verde muy suave */
+
+    /* --- ESTILOS DE IMPRESIÓN --- */
+    .print-header { display: none; }
+    
+    @media print {
+        body { background: white; font-size: 12pt; }
+        .no-print, nav, header, .btn-primary, .btn-secondary, .sidebar, .flash-message { display: none !important; }
+        .print-header { 
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center; 
+            margin-bottom: 20px; 
+            border-bottom: 2px solid var(--color-petroleo);
+            padding-bottom: 10px;
+        }
+        .content-card { 
+            box-shadow: none; 
+            border: none; 
+            padding: 0; 
+            margin: 0; 
+        }
+        .input-custom, textarea { 
+            border: none; 
+            border-bottom: 1px solid #ccc; 
+            background: transparent; 
+            resize: none;
+            padding: 0;
+        }
+        .grid { display: grid !important; } /* Asegurar grid en impresión */
+        
+        /* Expandir textareas para ver todo el contenido */
+        textarea { height: auto; overflow: visible; }
+    }
+</style>
+
+<!-- ENCABEZADO DE IMPRESIÓN (Visible solo al imprimir) -->
+<div class="print-header">
+    <div class="flex items-center gap-4">
+        <!-- Puedes poner tu logo real aquí -->
+        <img src="{{ url_for('static', filename='img/logo.png') }}" alt="Logo" style="height: 60px; width: auto;">
+        <div>
+            <h1 class="text-2xl font-bold text-petroleo">CLÍNICA DERMATOLÓGICA</h1>
+            <p class="text-sm text-gray-500">Expediente Clínico</p>
+        </div>
+    </div>
+    <div class="text-right">
+        <p class="font-bold text-gray-700">Fecha Impresión:</p>
+        <span id="print-date" class="text-sm"></span>
+    </div>
+</div>
+
+<!-- ENCABEZADO DE PANTALLA -->
+<div class="flex flex-col md:flex-row justify-between items-center mb-6 gap-4 no-print">
+    <div>
+        <h2 class="text-3xl font-bold text-petroleo">{{ accion }} Expediente</h2>
+        <p class="text-gray-500">Gestión de historia clínica y tratamientos.</p>
+    </div>
+    <div class="flex gap-3 w-full md:w-auto">
+        <a href="{{ url_for('expedientes_lista', id_paciente=paciente.id) }}" class="btn-secondary px-4 py-2 rounded-md font-medium text-center w-full md:w-auto">
+            <i class="fas fa-arrow-left mr-2"></i>Volver
+        </a>
+        <button onclick="window.print();" class="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition font-medium w-full md:w-auto shadow-sm">
+            <i class="fas fa-print mr-2"></i>Imprimir
+        </button>
+    </div>
+</div>
+
+<!-- MENSAJES FLASH -->
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+    {% for category, message in messages %}
+      <div class="p-4 mb-6 rounded-lg shadow-sm border-l-4 flash-message {% if category == 'success' %} bg-green-50 border-green-500 text-green-700 {% else %} bg-red-50 border-red-500 text-red-700 {% endif %}" role="alert">
+        <span class="font-medium">{{ message }}</span>
+      </div>
+    {% endfor %}
+  {% endif %}
+{% endwith %}
+
+<!-- ==================== FORMULARIO PRINCIPAL ==================== -->
+<form method="POST" action="{{ url_for(request.endpoint, **request.view_args) }}">
+    
+    <!-- TARJETA 1: DATOS GENERALES -->
+    <div class="content-card">
+        <h3 class="section-title"><i class="fas fa-user-md mr-2"></i>Datos del Paciente</h3>
+        
+        <!-- Info del paciente (AHORA EDITABLE) -->
+        <div class="mb-6 bg-blue-50 p-4 rounded-md border border-blue-100">
+            <h4 class="text-xs font-bold text-blue-700 uppercase mb-3 border-b border-blue-200 pb-1">
+                <i class="fas fa-user-edit mr-1"></i> Editar Datos Personales
+            </h4>
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <!-- Nombre -->
+                <div>
+                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Nombre</label>
+                    <input type="text" name="p_nombre" value="{{ paciente.nombre }}" class="input-custom bg-white" required>
+                </div>
+                <!-- Apellido -->
+                <div>
+                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Apellido</label>
+                    <input type="text" name="p_apellido" value="{{ paciente.apellido }}" class="input-custom bg-white" required>
+                </div>
+                <!-- Fecha Nacimiento -->
+                <div>
+                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Fecha Nacimiento</label>
+                    <input type="date" name="p_fecha_nacimiento" value="{{ paciente.fecha_nacimiento }}" class="input-custom bg-white">
+                </div>
+                <!-- Teléfono -->
+                <div>
+                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Teléfono</label>
+                    <input type="text" name="p_telefono" value="{{ paciente.telefono }}" class="input-custom bg-white">
+                </div>
+            </div>
+            <!-- Pequeño indicador de edad calculada -->
+            <div class="mt-2 text-right">
+                <span class="text-xs text-gray-500 italic">Edad actual calculada: <strong>{{ edad }} años</strong></span>
+            </div>
+        </div>
+
+        <!-- Campos del expediente -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+                <label for="fecha_expediente" class="block text-gray-700 font-semibold mb-1">Fecha del Expediente</label>
+                <input type="date" id="fecha_expediente" name="fecha_expediente" value="{{ expediente.fecha_expediente if expediente else today.strftime('%Y-%m-%d') }}" class="input-custom" required>
+            </div>
+            <div class="md:col-span-2">
+                <label for="motivo_consulta" class="block text-gray-700 font-semibold mb-1">Motivo de Consulta</label>
+                <textarea id="motivo_consulta" name="motivo_consulta" rows="2" class="input-custom">{{ expediente.motivo_consulta or '' }}</textarea>
+            </div>
+            <div class="md:col-span-2">
+                <label class="block text-gray-700 font-semibold mb-1">Enfermedades / Antecedentes</label>
+                <textarea name="enfermedades" rows="2" class="input-custom" placeholder="Describa enfermedades crónicas o síntomas relevantes...">{{ expediente.enfermedades or '' }}</textarea>
+            </div>
+        </div>
+
+        <!-- Grid de Hábitos y Síntomas -->
+        <h4 class="font-bold text-gray-600 mt-6 mb-3 uppercase text-sm border-b pb-1">Hábitos y Síntomas</h4>
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div><label class="text-sm text-gray-600 font-medium">Problemas Hormonales</label><input type="text" name="problemas_hormonales" value="{{ expediente.problemas_hormonales or '' }}" class="input-custom"></div>
+            <div><label class="text-sm text-gray-600 font-medium">Alergias</label><input type="text" name="alergias" value="{{ expediente.alergias or '' }}" class="input-custom"></div>
+            <div><label class="text-sm text-gray-600 font-medium">Menstruación</label><input type="text" name="menstruacion" value="{{ expediente.menstruacion or '' }}" class="input-custom"></div>
+            <div><label class="text-sm text-gray-600 font-medium">Caída de Cabello</label><input type="text" name="caida_cabello" value="{{ expediente.caida_cabello or '' }}" class="input-custom"></div>
+            <div><label class="text-sm text-gray-600 font-medium">Caspa</label><input type="text" name="caspa" value="{{ expediente.caspa or '' }}" class="input-custom"></div>
+            <div><label class="text-sm text-gray-600 font-medium">Vasos de Agua (al día)</label><input type="text" name="vasos_agua" value="{{ expediente.vasos_agua or '' }}" class="input-custom"></div>
+            <div><label class="text-sm text-gray-600 font-medium">Horas de Sueño</label><input type="text" name="horas_sueno" value="{{ expediente.horas_sueno or '' }}" class="input-custom"></div>
+            <div><label class="text-sm text-gray-600 font-medium">Productos Corporales</label><input type="text" name="productos_corporales" value="{{ expediente.productos_corporales or '' }}" class="input-custom"></div>
+            <div><label class="text-sm text-gray-600 font-medium">Alimentos Frecuentes</label><input type="text" name="alimentos" value="{{ expediente.alimentos or '' }}" class="input-custom"></div>
+        </div>
+        <div class="mt-4">
+            <label class="block text-gray-700 font-semibold mb-1">Otros Síntomas</label>
+            <textarea name="otros_sintomas" rows="2" class="input-custom">{{ expediente.otros_sintomas or '' }}</textarea>
+        </div>
+    </div>
+
+    <!-- TARJETA 2: SKINCARE COMPARATIVO -->
+    <div class="content-card">
+        <h3 class="section-title"><i class="fas fa-pump-soap mr-2"></i>Rutina de Skincare</h3>
+        
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <!-- Columna Izquierda: Rutina Actual -->
+            <div class="skincare-box skincare-old">
+                <h4 class="text-lg font-bold text-orange-800 mb-4 flex items-center"><i class="fas fa-history mr-2"></i>Rutina Anterior/Actual</h4>
+                <div class="space-y-3">
+                    <div><label class="text-xs font-bold text-orange-700 uppercase">Limpieza</label><input type="text" name="skincare_limpieza" value="{{ expediente.skincare_limpieza or '' }}" class="input-custom bg-white"></div>
+                    <div><label class="text-xs font-bold text-orange-700 uppercase">Hidratación</label><input type="text" name="skincare_hidratacion" value="{{ expediente.skincare_hidratacion or '' }}" class="input-custom bg-white"></div>
+                    <div><label class="text-xs font-bold text-orange-700 uppercase">Ojos</label><input type="text" name="skincare_ojos" value="{{ expediente.skincare_ojos or '' }}" class="input-custom bg-white"></div>
+                    <div><label class="text-xs font-bold text-orange-700 uppercase">Fotoprotección</label><input type="text" name="skincare_fotoproteccion" value="{{ expediente.skincare_fotoproteccion or '' }}" class="input-custom bg-white"></div>
+                    <div><label class="text-xs font-bold text-orange-700 uppercase">Noche</label><input type="text" name="skincare_noche" value="{{ expediente.skincare_noche or '' }}" class="input-custom bg-white"></div>
+                    <div><label class="text-xs font-bold text-orange-700 uppercase">Tratamiento Extra</label><textarea name="skincare_tratamiento" rows="3" class="input-custom bg-white">{{ expediente.skincare_tratamiento or '' }}</textarea></div>
+                </div>
+            </div>
+
+            <!-- Columna Derecha: Rutina Nueva -->
+            <div class="skincare-box skincare-new">
+                <h4 class="text-lg font-bold text-green-800 mb-4 flex items-center"><i class="fas fa-leaf mr-2"></i>Nueva Rutina Recetada</h4>
+                <div class="space-y-3">
+                    <div><label class="text-xs font-bold text-green-700 uppercase">Limpieza</label><input type="text" name="skincare_nuevo_limpieza" value="{{ expediente.skincare_nuevo_limpieza or '' }}" class="input-custom bg-white"></div>
+                    <div><label class="text-xs font-bold text-green-700 uppercase">Hidratación</label><input type="text" name="skincare_nuevo_hidratacion" value="{{ expediente.skincare_nuevo_hidratacion or '' }}" class="input-custom bg-white"></div>
+                    <div><label class="text-xs font-bold text-green-700 uppercase">Ojos</label><input type="text" name="skincare_nuevo_ojos" value="{{ expediente.skincare_nuevo_ojos or '' }}" class="input-custom bg-white"></div>
+                    <div><label class="text-xs font-bold text-green-700 uppercase">Fotoprotección</label><input type="text" name="skincare_nuevo_fotoproteccion" value="{{ expediente.skincare_nuevo_fotoproteccion or '' }}" class="input-custom bg-white"></div>
+                    <div><label class="text-xs font-bold text-green-700 uppercase">Noche</label><input type="text" name="skincare_nuevo_noche" value="{{ expediente.skincare_nuevo_noche or '' }}" class="input-custom bg-white"></div>
+                    <div><label class="text-xs font-bold text-green-700 uppercase">Tratamiento Extra</label><textarea name="skincare_nuevo_tratamiento" rows="3" class="input-custom bg-white">{{ expediente.skincare_nuevo_tratamiento or '' }}</textarea></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="mt-6">
+            <label class="block text-gray-700 font-semibold mb-1">Sustancias Ingeridas (Medicamentos, Alcohol, etc.)</label>
+            <textarea name="sustancias_ingeridas" rows="2" class="input-custom">{{ expediente.sustancias_ingeridas or '' }}</textarea>
+        </div>
+
+        <div class="mt-8 flex justify-end no-print">
+            <button type="submit" class="btn-primary px-8 py-3 rounded-md font-bold text-lg shadow-lg">
+                <i class="fas fa-save mr-2"></i>Guardar Cambios
+            </button>
+        </div>
+    </div>
+</form>
+
+{% if expediente %}
+<!-- ==================== SECCIÓN DE SESIONES ==================== -->
+<div class="content-card no-print">
+    <h3 class="section-title"><i class="fas fa-notes-medical mr-2"></i>Sesiones y Evolución</h3>
+    
+    <form method="POST" action="{{ url_for('sesion_nueva', id_expediente=expediente.id_expediente) }}" class="bg-gray-50 p-4 rounded-md border border-gray-200 mb-6">
+        <h4 class="font-bold text-gray-700 mb-3 text-sm uppercase">Añadir Nueva Sesión</h4>
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+            <div>
+                <label class="block text-xs font-bold text-gray-500 mb-1">Fecha</label>
+                <input type="date" name="fecha_sesion" class="input-custom" required>
+            </div>
+            <div class="md:col-span-3">
+                <label class="block text-xs font-bold text-gray-500 mb-1">Tratamiento Realizado</label>
+                <input type="text" name="tratamiento" class="input-custom" required placeholder="Ej: Limpieza facial profunda...">
+            </div>
+            <div class="md:col-span-4">
+                <label class="block text-xs font-bold text-gray-500 mb-1">Resultados / Observaciones</label>
+                <textarea name="resultados" rows="2" class="input-custom" placeholder="Reacción del paciente, mejoras visibles..."></textarea>
+            </div>
+            <div class="md:col-span-4 text-right">
+                <button type="submit" class="bg-salvia text-white px-4 py-2 rounded-md font-medium hover:bg-opacity-90">
+                    <i class="fas fa-plus mr-1"></i>Agregar Sesión
+                </button>
+            </div>
+        </div>
+    </form>
+
+    <div class="space-y-4">
+        {% for sesion in sesiones %}
+        <div class="border-l-4 border-salvia pl-4 py-2">
+            <p class="text-sm text-gray-500 font-bold mb-1"><i class="far fa-calendar-alt mr-1"></i>{{ sesion.fecha_sesion }}</p>
+            <div class="bg-white p-3 rounded shadow-sm border border-gray-100">
+                <p class="text-gray-800 font-medium"><span class="text-petroleo font-bold">Tx:</span> {{ sesion.tratamiento }}</p>
+                {% if sesion.resultados %}
+                <p class="text-gray-600 text-sm mt-1"><span class="font-bold">Res:</span> {{ sesion.resultados }}</p>
+                {% endif %}
+            </div>
+        </div>
+        {% else %}
+        <p class="text-center text-gray-400 italic py-4">No hay sesiones registradas en este expediente.</p>
+        {% endfor %}
+    </div>
+</div>
+
+<!-- ==================== SECCIÓN DE DOCUMENTOS ==================== -->
+<div class="content-card no-print" id="documentos">
+    <div class="flex justify-between items-center border-bottom pb-2 mb-4">
+        <h3 class="section-title mb-0 border-none"><i class="fas fa-folder-open mr-2"></i>Documentos Adjuntos</h3>
+        <a href="{{ url_for('documentos_eliminados', id_expediente=expediente.id_expediente) }}" class="text-sm text-gray-500 hover:text-petroleo hover:underline transition">
+            <i class="fas fa-trash-alt mr-1"></i>Ver Papelera
+        </a>
+    </div>
+
+    <!-- Formulario de subida -->
+    <form method="POST" action="{{ url_for('subir_documento', id_expediente=expediente.id_expediente) }}" enctype="multipart/form-data" class="mb-6 bg-blue-50 p-4 rounded-md border border-blue-100 flex flex-col md:flex-row gap-4 items-center">
+        <div class="flex-grow w-full">
+            <label class="block text-xs font-bold text-blue-700 mb-1">Subir Archivos (Fotos, PDF, Análisis)</label>
+            <input type="file" name="documento" required multiple class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-100 file:text-blue-700 hover:file:bg-blue-200 cursor-pointer">
+        </div>
+        <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded-md font-medium hover:bg-blue-700 shadow-sm w-full md:w-auto">
+            <i class="fas fa-upload mr-2"></i>Subir
+        </button>
+    </form>
+
+    <!-- Lista de Documentos -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+        {% for doc in documentos %}
+        <div class="flex justify-between items-center p-3 bg-gray-50 rounded-md border border-gray-200 hover:shadow-md transition">
+            <div class="flex items-center overflow-hidden">
+                <div class="bg-white p-2 rounded-full mr-3 text-petroleo shadow-sm">
+                    <i class="fas fa-file-alt"></i>
+                </div>
+                <div class="truncate">
+                    <a href="{{ url_for('uploaded_file', filename=doc.ruta_archivo) }}" target="_blank" class="font-medium text-gray-700 hover:text-petroleo truncate block">
+                        {{ doc.nombre_archivo }}
+                    </a>
+                    <span class="text-xs text-gray-500">{{ doc.fecha_subida[:10] }}</span>
+                </div>
+            </div>
+            <form action="{{ url_for('eliminar_documento', id_documento=doc.id_documento) }}" method="POST" onsubmit="return confirm('¿Mover este documento a la papelera?');">
+                <button type="submit" class="text-gray-400 hover:text-red-500 transition p-2" title="Mover a papelera">
+                    <i class="fas fa-trash"></i>
+                </button>
+            </form>
+        </div>
+        {% else %}
+        <div class="col-span-2 text-center py-6 text-gray-400">
+            <i class="far fa-folder-open text-4xl mb-2"></i>
+            <p>No hay documentos adjuntos.</p>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<script>
+    document.addEventListener("DOMContentLoaded", function() {
+        // Poner fecha de impresión automática
+        const printDateElement = document.getElementById('print-date');
+        if (printDateElement) {
+            const now = new Date();
+            const options = { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' };
+            printDateElement.textContent = now.toLocaleDateString('es-ES', options);
+        }
+    });
+</script>
+{% endblock %}

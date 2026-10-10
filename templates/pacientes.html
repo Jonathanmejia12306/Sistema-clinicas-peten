@@ -1,0 +1,313 @@
+{% extends 'layout.html' %}
+{% block title %}Gestión de Pacientes{% endblock %}
+
+{% block content %}
+<style>
+    :root {
+        --color-petroleo: #1F7A7A;
+        --color-salvia: #7FB2B2;
+        --color-arena: #EDC988;
+        --color-fondo: #F3E6E0;
+        --color-neutro: #BCCCD1;
+    }
+
+    .text-petroleo { color: var(--color-petroleo); }
+
+    /* Botones */
+    .btn-primary {
+        background-color: var(--color-petroleo);
+        color: white;
+        transition: background-color 0.3s;
+    }
+    .btn-primary:hover { background-color: #165e5e; }
+
+    .btn-secondary {
+        background-color: var(--color-neutro);
+        color: #374151;
+        transition: background-color 0.3s;
+    }
+    .btn-secondary:hover { background-color: #9fb3b9; }
+
+    /* Inputs */
+    .input-custom {
+        border: 1px solid var(--color-neutro);
+        transition: all 0.3s;
+    }
+    .input-custom:focus {
+        outline: none;
+        border-color: var(--color-petroleo);
+        box-shadow: 0 0 0 3px rgba(31, 122, 122, 0.1);
+    }
+
+    /* Tabla */
+    .table-header {
+        background-color: var(--color-salvia);
+        color: white;
+    }
+
+    /* Cards */
+    .content-card {
+        border-top: 5px solid var(--color-arena);
+    }
+
+    /* Paginación */
+    .pagination-btn {
+        padding: 0.5rem 1rem;
+        border: 1px solid #e5e7eb;
+        background-color: white;
+        color: #374151;
+        border-radius: 0.375rem;
+        transition: all 0.2s;
+    }
+    .pagination-btn:hover:not(:disabled) {
+        background-color: var(--color-fondo);
+        color: var(--color-petroleo);
+        border-color: var(--color-petroleo);
+    }
+    .pagination-btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+</style>
+
+<!-- Encabezado -->
+<div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+    <div>
+        <h2 class="text-3xl font-bold text-petroleo">Gestión de Pacientes</h2>
+        <p class="text-gray-500 mt-1">Directorio de pacientes y acceso a expedientes.</p>
+    </div>
+    
+    <button id="openModalBtn" class="btn-primary px-4 py-2 rounded-md font-medium text-center shadow-md w-full md:w-auto flex items-center justify-center">
+        <i class="fas fa-user-plus mr-2"></i>Nuevo Paciente
+    </button>
+</div>
+
+<!-- Mensajes Flash -->
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+    {% for category, message in messages %}
+      <div class="p-4 mb-6 rounded-lg shadow-sm border-l-4 {% if category == 'success' %} bg-green-50 border-green-500 text-green-700 {% else %} bg-red-50 border-red-500 text-red-700 {% endif %}" role="alert">
+        <span class="font-medium">{{ message }}</span>
+      </div>
+    {% endfor %}
+  {% endif %}
+{% endwith %}
+
+<div class="bg-white p-6 md:p-8 rounded-lg shadow-md w-full content-card">
+    
+    <!-- Barra de Búsqueda -->
+    <div class="mb-6 p-4 rounded-lg border border-gray-100" style="background-color: var(--color-fondo);">
+        <div class="relative w-full">
+            <input type="text" id="searchInput" placeholder="Buscar por nombre, apellido, teléfono..." 
+                   class="input-custom w-full pl-10 pr-4 py-3 rounded-md bg-white text-gray-700 font-medium">
+            <i class="fas fa-search absolute left-3 top-3.5 text-gray-400 text-lg"></i>
+        </div>
+    </div>
+
+    <!-- Tabla -->
+    <div class="overflow-x-auto rounded-t-lg border border-gray-100 min-h-[400px]">
+        <table class="min-w-full bg-white">
+            <thead class="table-header">
+                <tr>
+                    <th class="py-3 px-6 text-left text-xs font-semibold uppercase tracking-wider">Nombre Completo</th>
+                    <th class="py-3 px-6 text-left text-xs font-semibold uppercase tracking-wider">Teléfono</th>
+                    <th class="py-3 px-6 text-left text-xs font-semibold uppercase tracking-wider">Edad</th>
+                    <th class="py-3 px-6 text-center text-xs font-semibold uppercase tracking-wider">Acciones</th>
+                </tr>
+            </thead>
+            <tbody id="pacientesTbody" class="divide-y divide-gray-200">
+                <!-- Se llena con JS -->
+                <tr><td colspan="4" class="py-10 text-center text-gray-400">Cargando pacientes...</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Controles de Paginación -->
+    <div id="paginationControls" class="flex flex-col sm:flex-row justify-between items-center mt-4 pt-4 border-t border-gray-100 hidden">
+        <div class="text-sm text-gray-500 mb-2 sm:mb-0">
+            Mostrando <span id="startItem" class="font-bold">0</span> a <span id="endItem" class="font-bold">0</span> de <span id="totalItems" class="font-bold">0</span> pacientes
+        </div>
+        <div class="flex gap-2">
+            <button id="prevPageBtn" class="pagination-btn" disabled><i class="fas fa-chevron-left mr-1"></i> Anterior</button>
+            <button id="nextPageBtn" class="pagination-btn" disabled>Siguiente <i class="fas fa-chevron-right ml-1"></i></button>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL NUEVO PACIENTE -->
+<div id="pacienteModal" class="fixed inset-0 bg-gray-900 bg-opacity-60 hidden overflow-y-auto h-full w-full z-50 flex items-center justify-center backdrop-blur-sm">
+    <div class="relative p-0 border-0 w-full max-w-lg shadow-2xl rounded-xl bg-white transform transition-all scale-100">
+        <!-- Modal Header -->
+        <div class="bg-brand-petroleo p-5 rounded-t-xl text-white flex justify-between items-center" style="background-color: var(--color-petroleo);">
+            <h3 class="text-xl font-bold"><i class="fas fa-user-plus mr-2"></i>Registrar Nuevo Paciente</h3>
+            <button id="cancelModalBtnTop" class="text-white opacity-70 hover:opacity-100 transition">
+                <i class="fas fa-times text-xl"></i>
+            </button>
+        </div>
+
+        <div class="p-6">
+            <form action="{{ url_for('nuevo_paciente') }}" method="POST">
+                <div class="grid grid-cols-2 gap-4 mb-4">
+                    <div>
+                        <label for="nombre" class="block text-gray-700 text-sm font-bold mb-2">Nombre</label>
+                        <input type="text" name="nombre" id="nombre" class="input-custom w-full px-3 py-2 rounded-md" required>
+                    </div>
+                    <div>
+                        <label for="apellido" class="block text-gray-700 text-sm font-bold mb-2">Apellido</label>
+                        <input type="text" name="apellido" id="apellido" class="input-custom w-full px-3 py-2 rounded-md" required>
+                    </div>
+                </div>
+                
+                <div class="mb-4">
+                    <label for="telefono" class="block text-gray-700 text-sm font-bold mb-2">Teléfono</label>
+                    <div class="relative">
+                        <input type="tel" name="telefono" id="telefono" class="input-custom w-full pl-10 pr-3 py-2 rounded-md">
+                        <i class="fas fa-phone absolute left-3 top-3 text-gray-400"></i>
+                    </div>
+                </div>
+                
+                <div class="mb-6">
+                    <label for="fecha_nacimiento" class="block text-gray-700 text-sm font-bold mb-2">Fecha de Nacimiento</label>
+                    <input type="date" name="fecha_nacimiento" id="fecha_nacimiento" class="input-custom w-full px-3 py-2 rounded-md">
+                </div>
+                
+                <div class="flex justify-end gap-3 mt-6 border-t pt-4 border-gray-100">
+                    <button type="button" id="cancelModalBtn" class="px-5 py-2 bg-gray-100 text-gray-600 rounded-md hover:bg-gray-200 transition font-medium">Cancelar</button>
+                    <button type="submit" class="btn-primary px-6 py-2 rounded-md font-bold shadow-md">Guardar Paciente</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+    // --- VARIABLES DE PAGINACIÓN ---
+    let allPacientes = [];
+    let currentPage = 1;
+    const itemsPerPage = 10; // Cambia esto si quieres más o menos por página
+
+    // --- ELEMENTOS DOM ---
+    const modal = document.getElementById('pacienteModal');
+    const openBtn = document.getElementById('openModalBtn');
+    const cancelBtn = document.getElementById('cancelModalBtn');
+    const cancelBtnTop = document.getElementById('cancelModalBtnTop');
+    
+    const searchInput = document.getElementById('searchInput');
+    const pacientesTbody = document.getElementById('pacientesTbody');
+
+    // Controles paginación
+    const paginationControls = document.getElementById('paginationControls');
+    const prevPageBtn = document.getElementById('prevPageBtn');
+    const nextPageBtn = document.getElementById('nextPageBtn');
+    const startItemSpan = document.getElementById('startItem');
+    const endItemSpan = document.getElementById('endItem');
+    const totalItemsSpan = document.getElementById('totalItems');
+
+    // --- LÓGICA MODAL ---
+    function openModal() { modal.classList.remove('hidden'); }
+    function closeModal() { modal.classList.add('hidden'); }
+    openBtn.addEventListener('click', openModal);
+    cancelBtn.addEventListener('click', closeModal);
+    cancelBtnTop.addEventListener('click', closeModal);
+    window.addEventListener('click', (event) => { if (event.target === modal) closeModal(); });
+
+    // --- CARGA Y PAGINACIÓN ---
+
+    function cargarPacientes() {
+        const query = searchInput.value;
+        fetch(`/api/pacientes/buscar?q=${encodeURIComponent(query)}`)
+            .then(response => response.json())
+            .then(data => {
+                allPacientes = data;
+                currentPage = 1; // Resetear a página 1 en nueva búsqueda
+                renderizarTabla();
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                pacientesTbody.innerHTML = `<tr><td colspan="4" class="py-10 text-center text-red-500">Error al cargar pacientes.</td></tr>`;
+            });
+    }
+
+    function renderizarTabla() {
+        pacientesTbody.innerHTML = '';
+        const total = allPacientes.length;
+
+        if (total === 0) {
+            paginationControls.classList.add('hidden');
+            pacientesTbody.innerHTML = `
+                <tr>
+                    <td colspan="4" class="py-10 text-center text-gray-400 italic">
+                        <i class="fas fa-search mb-2 text-2xl"></i><br>
+                        No se encontraron pacientes.
+                    </td>
+                </tr>`;
+            return;
+        }
+
+        // Cálculos de paginación
+        const totalPages = Math.ceil(total / itemsPerPage);
+        if (currentPage > totalPages) currentPage = totalPages;
+        const startIndex = (currentPage - 1) * itemsPerPage;
+        const endIndex = Math.min(startIndex + itemsPerPage, total);
+        
+        // Slice del array actual
+        const itemsToShow = allPacientes.slice(startIndex, endIndex);
+
+        // Generar HTML
+        itemsToShow.forEach(paciente => {
+            const row = document.createElement('tr');
+            row.className = 'hover:bg-gray-50 transition-colors group';
+            const edad = paciente.edad !== null ? `${paciente.edad} años` : 'N/A';
+            const expedientesUrl = `/paciente/${paciente.id}/expedientes`;
+            const eliminarUrl = `/pacientes/eliminar/${paciente.id}`;
+            
+            row.innerHTML = `
+                <td class="py-4 px-6 font-medium text-gray-800">
+                    <div class="flex items-center">
+                        <div class="h-8 w-8 rounded-full bg-gray-100 flex items-center justify-center text-petroleo mr-3">
+                            <i class="fas fa-user"></i>
+                        </div>
+                        ${paciente.nombre} ${paciente.apellido}
+                    </div>
+                </td>
+                <td class="py-4 px-6 text-gray-600 font-mono text-sm">${paciente.telefono || '-'}</td>
+                <td class="py-4 px-6 text-gray-600">${edad}</td>
+                <td class="py-4 px-6 whitespace-nowrap text-center space-x-2">
+                    <a href="${expedientesUrl}" class="bg-teal-50 text-teal-700 border border-teal-200 px-3 py-1.5 rounded-md text-sm font-bold hover:bg-teal-600 hover:text-white transition shadow-sm inline-flex items-center">
+                        <i class="fas fa-folder-open mr-2"></i>Expedientes
+                    </a>
+                    <form action="${eliminarUrl}" method="POST" class="inline-block" onsubmit="return confirm('¿Seguro de mover a papelera?');">
+                        <button type="submit" class="bg-red-50 text-red-500 border border-red-200 px-3 py-1.5 rounded-md text-sm font-bold hover:bg-red-500 hover:text-white transition shadow-sm" title="Mover a Papelera">
+                            <i class="fas fa-trash-alt"></i>
+                        </button>
+                    </form>
+                </td>`;
+            pacientesTbody.appendChild(row);
+        });
+
+        // Actualizar UI de Paginación
+        paginationControls.classList.remove('hidden');
+        startItemSpan.innerText = startIndex + 1;
+        endItemSpan.innerText = endIndex;
+        totalItemsSpan.innerText = total;
+
+        prevPageBtn.disabled = currentPage === 1;
+        nextPageBtn.disabled = currentPage === totalPages;
+    }
+
+    // Eventos
+    prevPageBtn.addEventListener('click', () => {
+        if(currentPage > 1) { currentPage--; renderizarTabla(); }
+    });
+    nextPageBtn.addEventListener('click', () => {
+        const totalPages = Math.ceil(allPacientes.length / itemsPerPage);
+        if(currentPage < totalPages) { currentPage++; renderizarTabla(); }
+    });
+
+    // Búsqueda en tiempo real
+    searchInput.addEventListener('input', cargarPacientes);
+
+    // Carga inicial
+    cargarPacientes();
+</script>
+{% endblock %}

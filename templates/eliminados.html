@@ -1,0 +1,151 @@
+{% extends 'layout.html' %}
+{% block title %}Papelera de Reciclaje{% endblock %}
+
+{% block content %}
+<style>
+    :root {
+        --color-petroleo: #1F7A7A;
+        --color-salvia: #7FB2B2;
+        --color-arena: #EDC988;
+        --color-fondo: #F3E6E0;
+        --color-neutro: #BCCCD1;
+    }
+
+    .text-petroleo { color: var(--color-petroleo); }
+
+    /* Estilos de Tabla */
+    .table-header {
+        background-color: var(--color-salvia);
+        color: white;
+    }
+
+    /* Cards */
+    .content-card {
+        border-top: 5px solid var(--color-arena);
+    }
+</style>
+
+<div class="mb-6">
+    <h2 class="text-3xl font-bold text-petroleo">Papelera de Reciclaje</h2>
+    <p class="text-gray-500 mt-1">Recupera registros eliminados accidentalmente o bórralos permanentemente.</p>
+</div>
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+    {% for category, message in messages %}
+      <div class="p-4 mb-6 rounded-lg shadow-sm border-l-4 {% if category == 'success' %} bg-green-50 border-green-500 text-green-700 {% else %} bg-red-50 border-red-500 text-red-700 {% endif %}" role="alert">
+        <span class="font-medium">{{ message }}</span>
+      </div>
+    {% endfor %}
+  {% endif %}
+{% endwith %}
+
+<!-- SECCIÓN DE PACIENTES ELIMINADOS -->
+<div class="bg-white p-6 md:p-8 rounded-lg shadow-md w-full mb-8 content-card">
+    <div class="flex items-center mb-6 pb-4 border-b border-gray-100">
+        <div class="bg-blue-50 p-2 rounded-full mr-3 text-blue-500">
+            <i class="fas fa-user-injured text-xl"></i>
+        </div>
+        <h3 class="text-xl font-bold text-gray-700">Pacientes Eliminados</h3>
+    </div>
+
+    <div class="overflow-x-auto rounded-t-lg border border-gray-100">
+        <table class="min-w-full bg-white">
+            <thead class="table-header">
+                <tr>
+                    <th class="py-3 px-6 text-left text-xs font-semibold uppercase tracking-wider">Nombre Completo</th>
+                    <th class="py-3 px-6 text-left text-xs font-semibold uppercase tracking-wider">Teléfono</th>
+                    <th class="py-3 px-6 text-left text-xs font-semibold uppercase tracking-wider">Eliminado el</th>
+                    <th class="py-3 px-6 text-center text-xs font-semibold uppercase tracking-wider">Acciones</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-200">
+                {% if pacientes %}
+                    {% for paciente in pacientes %}
+                    <tr class="hover:bg-gray-50 transition-colors">
+                        <td class="py-4 px-6 font-medium text-gray-700">{{ paciente.nombre }} {{ paciente.apellido }}</td>
+                        <td class="py-4 px-6 text-gray-500">{{ paciente.telefono }}</td>
+                        <td class="py-4 px-6 text-gray-500 text-sm">{{ paciente.deleted_at[:16] if paciente.deleted_at else 'N/A' }}</td>
+                        <td class="py-4 px-6 whitespace-nowrap text-center space-x-2">
+                            <form action="{{ url_for('restaurar_paciente', id=paciente.id) }}" method="POST" class="inline-block" title="Restaurar Paciente">
+                                <button type="submit" class="bg-green-50 text-green-700 border border-green-200 px-3 py-1.5 rounded-md text-xs font-bold hover:bg-green-100 transition flex items-center gap-1">
+                                    <i class="fas fa-trash-restore"></i> <span class="hidden sm:inline">Restaurar</span>
+                                </button>
+                            </form>
+                            <form action="{{ url_for('eliminar_paciente_permanente', id=paciente.id) }}" method="POST" class="inline-block" onsubmit="return confirm('¡ADVERTENCIA!\n\nEsta acción eliminará al paciente y TODO su historial médico permanentemente.\n¿Continuar?');" title="Eliminar Definitivamente">
+                                <button type="submit" class="bg-red-50 text-red-700 border border-red-200 px-3 py-1.5 rounded-md text-xs font-bold hover:bg-red-100 transition flex items-center gap-1">
+                                    <i class="fas fa-times-circle"></i> <span class="hidden sm:inline">Eliminar</span>
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                {% else %}
+                    <tr>
+                        <td colspan="4" class="py-8 text-center text-gray-400">
+                            <p class="italic">No hay pacientes en la papelera.</p>
+                        </td>
+                    </tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- SECCIÓN DE INVENTARIO ELIMINADO -->
+<div class="bg-white p-6 md:p-8 rounded-lg shadow-md w-full content-card">
+    <div class="flex items-center mb-6 pb-4 border-b border-gray-100">
+        <div class="bg-orange-50 p-2 rounded-full mr-3 text-orange-500">
+            <i class="fas fa-boxes text-xl"></i>
+        </div>
+        <h3 class="text-xl font-bold text-gray-700">Ítems de Inventario Eliminados</h3>
+    </div>
+
+    <div class="overflow-x-auto rounded-t-lg border border-gray-100">
+        <table class="min-w-full bg-white">
+            <thead class="table-header">
+                <tr>
+                    <th class="py-3 px-6 text-left text-xs font-semibold uppercase tracking-wider">Nombre del Ítem</th>
+                    <th class="py-3 px-6 text-left text-xs font-semibold uppercase tracking-wider">Tipo</th>
+                    <th class="py-3 px-6 text-left text-xs font-semibold uppercase tracking-wider">Eliminado el</th>
+                    <th class="py-3 px-6 text-center text-xs font-semibold uppercase tracking-wider">Acciones</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-200">
+                {% if items_inventario %}
+                    {% for item in items_inventario %}
+                    <tr class="hover:bg-gray-50 transition-colors">
+                        <td class="py-4 px-6 font-medium text-gray-700">{{ item.nombre }}</td>
+                        <td class="py-4 px-6">
+                            <span class="px-2 py-1 text-xs rounded-full {{ 'bg-purple-100 text-purple-800' if item.tipo == 'Servicio' else 'bg-blue-100 text-blue-800' }}">
+                                {{ item.tipo }}
+                            </span>
+                        </td>
+                        <td class="py-4 px-6 text-gray-500 text-sm">{{ item.deleted_at[:16] if item.deleted_at else 'N/A' }}</td>
+                        <td class="py-4 px-6 whitespace-nowrap text-center space-x-2">
+                            <!-- BOTONES FUNCIONALES -->
+                            <form action="{{ url_for('inventario_restaurar', id=item.id) }}" method="POST" class="inline-block" title="Restaurar Ítem">
+                                <button type="submit" class="bg-green-50 text-green-700 border border-green-200 px-3 py-1.5 rounded-md text-xs font-bold hover:bg-green-100 transition flex items-center gap-1">
+                                    <i class="fas fa-trash-restore"></i> <span class="hidden sm:inline">Restaurar</span>
+                                </button>
+                            </form>
+                            <form action="{{ url_for('inventario_eliminar_permanente', id=item.id) }}" method="POST" class="inline-block" onsubmit="return confirm('¡ACCIÓN IRREVERSIBLE! ¿Eliminar permanentemente este ítem?');" title="Eliminar Definitivamente">
+                                <button type="submit" class="bg-red-50 text-red-700 border border-red-200 px-3 py-1.5 rounded-md text-xs font-bold hover:bg-red-100 transition flex items-center gap-1">
+                                    <i class="fas fa-times-circle"></i> <span class="hidden sm:inline">Eliminar</span>
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                {% else %}
+                    <tr>
+                        <td colspan="4" class="py-8 text-center text-gray-400">
+                            <p class="italic">No hay ítems de inventario en la papelera.</p>
+                        </td>
+                    </tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

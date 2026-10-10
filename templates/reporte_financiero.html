@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Reporte Financiero Detallado</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: 'Helvetica', 'Arial', sans-serif; -webkit-print-color-adjust: exact; print-color-adjust: exact;}
+
+        @media print {
+            .no-print { display: none !important; }
+            /* Evita saltos forzados, deja que el navegador decida */
+            .page-break { page-break-before: auto; }
+
+            /* Evita que una fila de tabla se corte a la mitad */
+            tr { page-break-inside: avoid; }
+
+            /* Evita que un título de sección quede solo al final de una hoja */
+            h2, h3 { page-break-after: avoid; }
+
+            .shadow-lg { box-shadow: none !important; }
+            .bg-gray-100 { background-color: white !important; }
+            body { padding: 0; }
+            .container-report { padding: 0; max-width: 100%; }
+        }
+
+        /* Estilos de Tabla Compactos */
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 11px; margin-bottom: 20px; }
+        th { background-color: #f3f4f6; text-align: left; padding: 6px 8px; border-bottom: 2px solid #9ca3af; font-weight: bold; text-transform: uppercase; color: #374151; }
+        td { padding: 6px 8px; border-bottom: 1px solid #e5e7eb; color: #1f2937; vertical-align: top; }
+        tr:last-child td { border-bottom: none; }
+
+        /* Columna de productos un poco más ancha */
+        .col-productos { width: 45%; }
+    </style>
+</head>
+<body class="bg-gray-100 p-8">
+
+    <div class="max-w-5xl mx-auto bg-white p-10 shadow-lg relative container-report">
+
+        <!-- Botón Imprimir -->
+        <button onclick="window.print()" class="no-print fixed top-4 right-4 bg-blue-600 text-white px-6 py-3 rounded-full hover:bg-blue-700 font-bold shadow-xl cursor-pointer z-50 transition transform hover:scale-105 flex items-center">
+            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path></svg>
+            Imprimir Reporte
+        </button>
+
+        <!-- ================= RESUMEN EJECUTIVO ================= -->
+        <div class="mb-8">
+            <div class="border-b-2 border-gray-800 pb-4 mb-6 flex justify-between items-end">
+                <div>
+                    <h1 class="text-3xl font-black text-gray-800 uppercase">Reporte Financiero</h1>
+                    <p class="text-gray-500 font-medium text-sm">Clínica Estetica Regenerativa</p>
+                </div>
+                <div class="text-right text-sm">
+                    <p class="font-bold text-gray-600">Periodo:</p>
+                    <p class="font-mono bg-gray-100 px-2 py-1 rounded mt-1">
+                        {{ reporte.fecha_inicio }} <span class="mx-1">➔</span> {{ reporte.fecha_fin }}
+                    </p>
+                </div>
+            </div>
+
+            <!-- Cards Resumen (Modificado a 3 columnas para incluir Productos y Servicios) -->
+            <div class="grid grid-cols-3 gap-4 mb-6">
+                <!-- Fila 1 -->
+                <div class="bg-blue-50 border border-blue-200 p-3 rounded text-center">
+                    <h3 class="text-[10px] font-bold text-gray-500 uppercase">Ventas Totales</h3>
+                    <p class="text-xl font-black text-blue-800">Q{{ "%.2f"|format(reporte.total_ventas) }}</p>
+                </div>
+                
+                <!-- NUEVO: Total Productos -->
+                <div class="bg-indigo-50 border border-indigo-200 p-3 rounded text-center">
+                    <h3 class="text-[10px] font-bold text-gray-500 uppercase">Total Productos</h3>
+                    <p class="text-xl font-black text-indigo-800">Q{{ "%.2f"|format(reporte.total_productos) }}</p>
+                </div>
+
+                <!-- NUEVO: Total Servicios -->
+                <div class="bg-purple-50 border border-purple-200 p-3 rounded text-center">
+                    <h3 class="text-[10px] font-bold text-gray-500 uppercase">Total Servicios</h3>
+                    <p class="text-xl font-black text-purple-800">Q{{ "%.2f"|format(reporte.total_servicios) }}</p>
+                </div>
+
+                <!-- Fila 2 -->
+                <div class="bg-gray-50 border border-gray-200 p-3 rounded text-center">
+                    <h3 class="text-[10px] font-bold text-gray-500 uppercase">Efectivo Recibido</h3>
+                    <p class="text-xl font-black text-gray-800">Q{{ "%.2f"|format(reporte.ingreso_efectivo) }}</p>
+                </div>
+                
+                <div class="bg-orange-50 border border-orange-200 p-3 rounded text-center">
+                    <h3 class="text-[10px] font-bold text-gray-500 uppercase">Créditos Nuevos</h3>
+                    <p class="text-xl font-black text-orange-800">Q{{ "%.2f"|format(reporte.creditos_nuevos) }}</p>
+                </div>
+
+                <div class="bg-green-50 border border-green-200 p-3 rounded text-center">
+                    <h3 class="text-[10px] font-bold text-gray-500 uppercase">Ganancia (Est.)</h3>
+                    <p class="text-xl font-black text-green-800">Q{{ "%.2f"|format(reporte.ganancia_bruta) }}</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================= SECCIÓN: EFECTIVO ================= -->
+        {% if lista_efectivo %}
+        <div class="mb-6">
+            <h2 class="text-sm font-bold text-gray-800 border-b-2 border-green-600 pb-1 mb-2 uppercase flex justify-between items-center">
+                <span>Ventas en Efectivo</span>
+                <span class="text-xs font-normal normal-case text-gray-500">Total: Q{{ "%.2f"|format(lista_efectivo|sum(attribute='monto_total')) }}</span>
+            </h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width: 50px;">ID</th>
+                        <th style="width: 120px;">Fecha</th>
+                        <th>Paciente</th>
+                        <th class="col-productos">Productos / Servicios</th>
+                        <th class="text-right" style="width: 80px;">Monto</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in lista_efectivo %}
+                    <tr>
+                        <td>#{{ item.id }}</td>
+                        <td>{{ item.fecha }}</td>
+                        <td>{{ item.nombre }} {{ item.apellido }}</td>
+                        <td class="text-gray-600 italic leading-tight">{{ item.detalles_productos }}</td>
+                        <td class="text-right font-bold">Q{{ "%.2f"|format(item.monto_total) }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+
+        <!-- ================= SECCIÓN: BANCOS / OTROS ================= -->
+        {% if lista_otros %}
+        <div class="mb-6">
+            <h2 class="text-sm font-bold text-gray-800 border-b-2 border-blue-600 pb-1 mb-2 uppercase flex justify-between items-center">
+                <span>Tarjetas, Transferencias y Cheques</span>
+                <span class="text-xs font-normal normal-case text-gray-500">Total: Q{{ "%.2f"|format(lista_otros|sum(attribute='monto_total')) }}</span>
+            </h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width: 50px;">ID</th>
+                        <th style="width: 120px;">Fecha</th>
+                        <th>Paciente</th>
+                        <th class="col-productos">Productos</th>
+                        <th>Método / Ref</th>
+                        <th class="text-right" style="width: 80px;">Monto</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in lista_otros %}
+                    <tr>
+                        <td>#{{ item.id }}</td>
+                        <td>{{ item.fecha }}</td>
+                        <td>{{ item.nombre }} {{ item.apellido }}</td>
+                        <td class="text-gray-600 italic leading-tight">{{ item.detalles_productos }}</td>
+                        <td>
+                            <div class="font-bold text-[10px]">{{ item.metodo_pago }}</div>
+                            <div class="text-[9px] font-mono">{{ item.referencia_pago or '' }}</div>
+                        </td>
+                        <td class="text-right font-bold">Q{{ "%.2f"|format(item.monto_total) }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+
+        <!-- ================= SECCIÓN: CRÉDITOS ================= -->
+        {% if lista_credito %}
+        <div class="mb-6">
+            <h2 class="text-sm font-bold text-gray-800 border-b-2 border-orange-600 pb-1 mb-2 uppercase flex justify-between items-center">
+                <span>Ventas al Crédito (Fiado)</span>
+                <span class="text-xs font-normal normal-case text-gray-500">Total: Q{{ "%.2f"|format(lista_credito|sum(attribute='monto_total')) }}</span>
+            </h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width: 50px;">ID</th>
+                        <th style="width: 120px;">Fecha</th>
+                        <th>Paciente</th>
+                        <th class="col-productos">Productos</th>
+                        <th class="text-right" style="width: 80px;">Total</th>
+                        <th class="text-right text-red-600" style="width: 80px;">Debe</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in lista_credito %}
+                    <tr>
+                        <td>#{{ item.id }}</td>
+                        <td>{{ item.fecha }}</td>
+                        <td>{{ item.nombre }} {{ item.apellido }}</td>
+                        <td class="text-gray-600 italic leading-tight">{{ item.detalles_productos }}</td>
+                        <td class="text-right">Q{{ "%.2f"|format(item.monto_total) }}</td>
+                        <td class="text-right font-bold text-red-600">Q{{ "%.2f"|format(item.saldo_pendiente) }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+
+        {% if not lista_efectivo and not lista_otros and not lista_credito %}
+            <div class="text-center py-10 text-gray-500">
+                <p>No se encontraron movimientos registrados en este rango de fechas.</p>
+            </div>
+        {% endif %}
+
+        <!-- Firma -->
+        <div class="mt-12 pt-4 border-t border-gray-300 flex justify-between text-[10px] text-gray-500">
+            <div>Generado el: <span id="fecha-pie"></span></div>
+            <div>Firma de Responsable: __________________________</div>
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('fecha-pie').textContent = new Date().toLocaleString('es-GT');
+    </script>
+</body>
+</html>

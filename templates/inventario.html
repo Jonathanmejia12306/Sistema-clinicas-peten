@@ -1,0 +1,323 @@
+{% extends 'layout.html' %}
+{% block title %}Gestión de Inventario{% endblock %}
+
+{% block content %}
+<style>
+    :root {
+        --color-petroleo: #1F7A7A;
+        --color-salvia: #7FB2B2;
+        --color-arena: #EDC988;
+        --color-fondo: #F3E6E0;
+        --color-neutro: #BCCCD1;
+    }
+    .text-petroleo { color: var(--color-petroleo); }
+    .btn-primary { background-color: var(--color-petroleo); color: white; transition: background-color 0.3s; }
+    .btn-primary:hover { background-color: #165e5e; }
+    .btn-secondary { background-color: var(--color-neutro); color: #374151; transition: background-color 0.3s; }
+    .btn-secondary:hover { background-color: #9fb3b9; }
+    .btn-xlsx { background-color: #15803d; color: white; transition: background-color 0.3s; }
+    .btn-xlsx:hover { background-color: #166534; }
+    .input-custom { border: 1px solid var(--color-neutro); transition: all 0.3s; }
+    .input-custom:focus { outline: none; border-color: var(--color-petroleo); box-shadow: 0 0 0 3px rgba(31, 122, 122, 0.1); }
+    .table-header { background-color: var(--color-salvia); color: white; }
+    .content-card { border-top: 5px solid var(--color-arena); }
+    .pagination-btn { padding: 0.5rem 1rem; border: 1px solid #e5e7eb; background-color: white; color: #374151; border-radius: 0.375rem; transition: all 0.2s; }
+    .pagination-btn:hover:not(:disabled) { background-color: var(--color-fondo); color: var(--color-petroleo); border-color: var(--color-petroleo); }
+    .pagination-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+</style>
+
+<!-- Encabezado -->
+<div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+    <div>
+        <h2 class="text-3xl font-bold text-petroleo">Inventario</h2>
+        <p class="text-gray-500 mt-1">Gestión de productos, servicios y control de stock.</p>
+    </div>
+
+    <div class="flex flex-wrap gap-2 w-full md:w-auto">
+        <a href="{{ url_for('inventario_exportar_xlsx') }}" class="btn-xlsx px-4 py-2 rounded-md font-medium text-center flex-grow md:flex-grow-0 shadow-md">
+            <i class="fas fa-file-excel mr-2"></i>Exportar XLSX
+        </a>
+        <a href="{{ url_for('inventario_historial') }}" class="btn-secondary px-4 py-2 rounded-md font-medium text-center flex-grow md:flex-grow-0">
+            <i class="fas fa-history mr-2"></i>Historial
+        </a>
+        <a href="{{ url_for('inventario_nuevo') }}" class="btn-primary px-4 py-2 rounded-md font-medium text-center flex-grow md:flex-grow-0 shadow-md">
+            <i class="fas fa-plus mr-2"></i>Nuevo Ítem
+        </a>
+    </div>
+</div>
+
+<div class="bg-white p-6 md:p-8 rounded-lg shadow-md w-full content-card">
+    <!-- Barra de Filtros -->
+    <div class="flex flex-col lg:flex-row gap-4 items-center mb-6 p-4 rounded-lg border border-gray-100" style="background-color: var(--color-fondo);">
+        <div class="relative w-full lg:w-1/4">
+            <input type="text" id="inventarioSearchInput" placeholder="Buscar..." class="input-custom w-full pl-10 pr-4 py-2 rounded-md bg-white">
+            <i class="fas fa-search absolute left-3 top-3 text-gray-400"></i>
+        </div>
+        <div class="flex flex-wrap gap-3 w-full lg:w-3/4 justify-start lg:justify-end items-center">
+            <label class="flex items-center cursor-pointer bg-white px-3 py-1 rounded-full border border-gray-200 shadow-sm">
+                <input type="checkbox" id="filtroCostoCero" class="mr-2 h-4 w-4 text-petroleo rounded"> <span class="text-xs font-bold text-gray-600">Sin Costo</span>
+            </label>
+            <label class="flex items-center cursor-pointer bg-white px-3 py-1 rounded-full border border-gray-200 shadow-sm">
+                <input type="checkbox" id="filtroBajoStock" class="mr-2 h-4 w-4 text-orange-500 rounded"> <span class="text-xs font-bold text-gray-600">Bajo Stock</span>
+            </label>
+            <label class="flex items-center cursor-pointer bg-white px-3 py-1 rounded-full border border-gray-200 shadow-sm">
+                <input type="checkbox" id="filtroSinStock" class="mr-2 h-4 w-4 text-gray-800 rounded"> <span class="text-xs font-bold text-gray-600">Sin Stock</span>
+            </label>
+            <label class="flex items-center cursor-pointer bg-white px-3 py-1 rounded-full border border-gray-200 shadow-sm">
+                <input type="checkbox" id="filtroPorVencer" class="mr-2 h-4 w-4 text-yellow-500 rounded"> <span class="text-xs font-bold text-gray-600">Por Vencer</span>
+            </label>
+            <label class="flex items-center cursor-pointer bg-white px-3 py-1 rounded-full border border-red-200 shadow-sm">
+                <input type="checkbox" id="filtroVencido" class="mr-2 h-4 w-4 text-red-600 rounded"> <span class="text-xs font-bold text-red-600">Ya Vencidos</span>
+            </label>
+        </div>
+    </div>
+
+    <!-- Tabla -->
+    <div class="overflow-x-auto rounded-t-lg border border-gray-100 min-h-[400px]">
+        <table class="min-w-full bg-white">
+            <thead class="table-header">
+                <tr>
+                    <th class="py-3 px-4 text-left text-xs font-semibold uppercase">Foto</th>
+                    <th class="py-3 px-4 text-left text-xs font-semibold uppercase">Nombre</th>
+                    <th class="py-3 px-4 text-left text-xs font-semibold uppercase">Tipo</th>
+                    <th class="py-3 px-4 text-left text-xs font-semibold uppercase">Vencimiento</th>
+                    <th class="py-3 px-4 text-left text-xs font-semibold uppercase">Stock</th>
+                    <th class="py-3 px-4 text-left text-xs font-semibold uppercase">P. Venta</th>
+                    <th class="py-3 px-4 text-left text-xs font-semibold uppercase hidden md:table-cell">Ganancia</th>
+                    <th class="py-3 px-4 text-center text-xs font-semibold uppercase">Acciones</th>
+                </tr>
+            </thead>
+            <tbody id="inventarioTbody" class="divide-y divide-gray-200">
+                <tr><td colspan="8" class="py-10 text-center text-gray-400">Cargando inventario...</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Paginación -->
+    <div id="paginationControls" class="flex flex-col sm:flex-row justify-between items-center mt-4 pt-4 border-t border-gray-100 hidden">
+        <div class="text-sm text-gray-500">Mostrando <span id="startItem">0</span> a <span id="endItem">0</span> de <span id="totalItems">0</span></div>
+        <div class="flex gap-2">
+            <button id="prevPageBtn" class="pagination-btn" disabled>Anterior</button>
+            <button id="nextPageBtn" class="pagination-btn" disabled>Siguiente</button>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL AGREGAR STOCK (ESTILO MEJORADO) -->
+<div id="addStockModal" class="fixed inset-0 bg-gray-900 bg-opacity-60 hidden overflow-y-auto h-full w-full z-50 flex items-center justify-center backdrop-blur-sm">
+    <div class="relative p-0 border-0 w-full max-w-md shadow-2xl rounded-xl bg-white overflow-hidden">
+        <div class="bg-green-600 p-4 text-white flex justify-between items-center">
+            <h3 class="text-lg font-bold"><i class="fas fa-plus-circle mr-2"></i>Agregar Stock</h3>
+            <button onclick="closeAddStockModal()" class="text-white hover:text-gray-200 text-2xl">&times;</button>
+        </div>
+        <div class="p-6">
+            <p class="text-gray-600 mb-4">Producto: <span id="addModalItemName" class="font-bold text-gray-800"></span></p>
+            <form id="addStockForm" method="POST">
+                <div class="mb-4">
+                    <label class="block text-gray-700 text-sm font-bold mb-2">Cantidad a Agregar</label>
+                    <input type="number" name="cantidad_a_agregar" min="1" class="input-custom w-full px-3 py-2 rounded-md" required autofocus>
+                </div>
+                <div class="mb-6">
+                    <label class="block text-gray-700 text-sm font-bold mb-2">Motivo / Descripción</label>
+                    <input type="text" name="descripcion_movimiento" placeholder="Ej: Compra según factura" class="input-custom w-full px-3 py-2 rounded-md">
+                </div>
+                <div class="flex justify-end gap-3">
+                    <button type="button" onclick="closeAddStockModal()" class="px-4 py-2 bg-gray-100 text-gray-600 rounded-md hover:bg-gray-200 font-medium">Cancelar</button>
+                    <button type="submit" class="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 font-bold shadow-md">Confirmar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL REMOVER STOCK (ESTILO MEJORADO) -->
+<div id="removeStockModal" class="fixed inset-0 bg-gray-900 bg-opacity-60 hidden overflow-y-auto h-full w-full z-50 flex items-center justify-center backdrop-blur-sm">
+    <div class="relative p-0 border-0 w-full max-w-md shadow-2xl rounded-xl bg-white overflow-hidden">
+        <div class="bg-orange-500 p-4 text-white flex justify-between items-center">
+            <h3 class="text-lg font-bold"><i class="fas fa-minus-circle mr-2"></i>Remover Stock</h3>
+            <button onclick="closeRemoveStockModal()" class="text-white hover:text-gray-200 text-2xl">&times;</button>
+        </div>
+        <div class="p-6">
+            <p class="text-gray-600 mb-4">Producto: <span id="removeModalItemName" class="font-bold text-gray-800"></span></p>
+            <form id="removeStockForm" method="POST">
+                <div class="mb-4">
+                    <label class="block text-gray-700 text-sm font-bold mb-2">Cantidad a Remover</label>
+                    <input type="number" name="cantidad_a_remover" min="1" class="input-custom w-full px-3 py-2 rounded-md" required autofocus>
+                </div>
+                <div class="mb-6">
+                    <label class="block text-gray-700 text-sm font-bold mb-2">Motivo / Descripción</label>
+                    <input type="text" name="descripcion_movimiento" placeholder="Ej: Merma o uso interno" class="input-custom w-full px-3 py-2 rounded-md">
+                </div>
+                <div class="flex justify-end gap-3">
+                    <button type="button" onclick="closeRemoveStockModal()" class="px-4 py-2 bg-gray-100 text-gray-600 rounded-md hover:bg-gray-200 font-medium">Cancelar</button>
+                    <button type="submit" class="px-4 py-2 bg-orange-500 text-white rounded-md hover:bg-orange-600 font-bold shadow-md">Confirmar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+    const userRole = "{{ current_user.rol }}";
+    let allItems = []; 
+    let filteredItems = []; 
+    let currentPage = 1;
+    const itemsPerPage = 20;
+
+    // --- CARGA Y RENDERIZADO ---
+    function cargarInventario() {
+        const query = document.getElementById('inventarioSearchInput').value;
+        fetch(`/api/inventario/buscar?q=${encodeURIComponent(query)}`)
+            .then(res => res.json())
+            .then(data => {
+                allItems = data;
+                aplicarFiltrosLocales();
+            });
+    }
+
+    function aplicarFiltrosLocales() {
+        const porVencerActivo = document.getElementById('filtroPorVencer').checked;
+        const hoyStr = new Date().toISOString().slice(0, 10);
+        const limiteDate = new Date(); limiteDate.setDate(limiteDate.getDate() + 60);
+        const limiteStr = limiteDate.toISOString().slice(0, 10);
+
+        filteredItems = allItems.filter(item => {
+            if (document.getElementById('filtroSinStock').checked) {
+                if (item.tipo !== 'Producto' || (item.cantidad || 0) > 0) return false;
+            }
+            if (document.getElementById('filtroVencido').checked) {
+                if (!item.fecha_vencimiento) return false;
+                const hoy = new Date(); hoy.setHours(0,0,0,0);
+                const [y, m, d] = item.fecha_vencimiento.split('-');
+                if (new Date(y, m-1, d) >= hoy) return false;
+            }
+            if (porVencerActivo) {
+                if (item.tipo !== 'Producto' || !item.fecha_vencimiento) return false;
+                if (item.fecha_vencimiento < hoyStr || item.fecha_vencimiento > limiteStr) return false;
+            }
+            return true;
+        });
+
+        if (porVencerActivo) {
+            filteredItems.sort((a, b) => a.fecha_vencimiento.localeCompare(b.fecha_vencimiento));
+        }
+
+        currentPage = 1;
+        renderizarTabla();
+    }
+
+    function getVencimientoInfo(item) {
+        if (item.tipo !== 'Producto' || !item.fecha_vencimiento) {
+            return { html: item.fecha_vencimiento || '-', rowClass: '' };
+        }
+        const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+        const [y, m, d] = item.fecha_vencimiento.split('-');
+        const fechaVenc = new Date(y, m - 1, d);
+        const dias = Math.round((fechaVenc - hoy) / 86400000);
+
+        let badgeClass, rowClass, label;
+        if (dias < 0) {
+            badgeClass = 'bg-red-600 text-white';
+            rowClass = 'bg-red-50';
+            label = `Vencido (${item.fecha_vencimiento})`;
+        } else if (dias <= 15) {
+            badgeClass = 'bg-red-100 text-red-700 border border-red-300';
+            rowClass = 'bg-red-50';
+            label = `${item.fecha_vencimiento} (${dias}d)`;
+        } else if (dias <= 30) {
+            badgeClass = 'bg-orange-100 text-orange-700 border border-orange-300';
+            rowClass = 'bg-orange-50';
+            label = `${item.fecha_vencimiento} (${dias}d)`;
+        } else if (dias <= 60) {
+            badgeClass = 'bg-yellow-100 text-yellow-700 border border-yellow-300';
+            rowClass = '';
+            label = `${item.fecha_vencimiento} (${dias}d)`;
+        } else {
+            return { html: item.fecha_vencimiento, rowClass: '' };
+        }
+        return { html: `<span class="px-2 py-1 rounded-full text-xs font-bold whitespace-nowrap ${badgeClass}">${label}</span>`, rowClass };
+    }
+
+    function renderizarTabla() {
+        const tbody = document.getElementById('inventarioTbody');
+        tbody.innerHTML = '';
+        const total = filteredItems.length;
+
+        if (total === 0) {
+            document.getElementById('paginationControls').classList.add('hidden');
+            tbody.innerHTML = `<tr><td colspan="8" class="p-10 text-center text-gray-400">Sin resultados</td></tr>`;
+            return;
+        }
+
+        const start = (currentPage - 1) * itemsPerPage;
+        const end = Math.min(start + itemsPerPage, total);
+        const pageItems = filteredItems.slice(start, end);
+
+        pageItems.forEach(item => {
+            const venc = getVencimientoInfo(item);
+            const row = document.createElement('tr');
+            row.className = `hover:bg-gray-50 border-b transition-colors ${venc.rowClass}`;
+
+            let botones = '';
+            // Agregar Stock (+)
+            if (item.tipo === 'Producto') {
+                botones += `<button onclick="openAddStockModal(this)" data-id="${item.id}" data-nombre="${item.nombre}" class="text-green-600 hover:bg-green-100 w-8 h-8 rounded-full transition-all"><i class="fas fa-plus"></i></button>`;
+                // Quitar Stock (-) solo Admin
+                if (userRole === 'admin') {
+                    botones += `<button onclick="openRemoveStockModal(this)" data-id="${item.id}" data-nombre="${item.nombre}" class="text-orange-500 hover:bg-orange-100 w-8 h-8 rounded-full transition-all"><i class="fas fa-minus"></i></button>`;
+                }
+            }
+            // Editar
+            botones += `<a href="/inventario/item/editar/${item.id}" class="text-blue-500 hover:bg-blue-100 w-8 h-8 rounded-full flex items-center justify-center transition-all"><i class="fas fa-edit"></i></a>`;
+            // Eliminar solo Admin
+            if (userRole === 'admin') {
+                botones += `
+                <form action="/inventario/item/eliminar/${item.id}" method="POST" class="inline" onsubmit="return confirm('¿Mover a la papelera?');">
+                    <button type="submit" class="text-red-400 hover:text-red-600 hover:bg-red-50 w-8 h-8 rounded-full transition-all"><i class="fas fa-trash"></i></button>
+                </form>`;
+            }
+
+            row.innerHTML = `
+                <td class="p-3">${item.ruta_foto ? `<img src="/uploads/productos/${item.ruta_foto}" class="h-10 w-10 object-cover rounded shadow-sm">` : `<i class="fas fa-image text-gray-200"></i>`}</td>
+                <td class="p-3 font-bold">${item.nombre}</td>
+                <td class="p-3"><span class="px-2 py-1 rounded-full text-xs font-bold ${item.tipo === 'Producto' ? 'bg-teal-100 text-teal-800' : 'bg-purple-100 text-purple-800'}">${item.tipo}</span></td>
+                <td class="p-3 text-sm">${venc.html}</td>
+                <td class="p-3 font-bold">${item.tipo === 'Producto' ? (item.cantidad || 0) : '-'}</td>
+                <td class="p-3">Q${item.precio_venta.toFixed(2)}</td>
+                <td class="p-3 hidden md:table-cell">Q${(item.ganancia_unidad || 0).toFixed(2)}</td>
+                <td class="p-3 text-center"><div class="flex gap-1 justify-center items-center">${botones}</div></td>
+            `;
+            tbody.appendChild(row);
+        });
+
+        document.getElementById('paginationControls').classList.remove('hidden');
+        document.getElementById('startItem').innerText = start + 1;
+        document.getElementById('endItem').innerText = end;
+        document.getElementById('totalItems').innerText = total;
+        document.getElementById('prevPageBtn').disabled = currentPage === 1;
+        document.getElementById('nextPageBtn').disabled = currentPage === Math.ceil(total / itemsPerPage);
+    }
+
+    // Funciones modales
+    function openAddStockModal(btn) { 
+        document.getElementById('addStockForm').action = `/inventario/stock/agregar/${btn.dataset.id}`;
+        document.getElementById('addModalItemName').innerText = btn.dataset.nombre;
+        document.getElementById('addStockModal').classList.remove('hidden'); 
+    }
+    function closeAddStockModal() { document.getElementById('addStockModal').classList.add('hidden'); }
+    function openRemoveStockModal(btn) { 
+        document.getElementById('removeStockForm').action = `/inventario/stock/remover/${btn.dataset.id}`;
+        document.getElementById('removeModalItemName').innerText = btn.dataset.nombre;
+        document.getElementById('removeStockModal').classList.remove('hidden'); 
+    }
+    function closeRemoveStockModal() { document.getElementById('removeStockModal').classList.add('hidden'); }
+
+    // Eventos
+    document.getElementById('inventarioSearchInput').addEventListener('input', cargarInventario);
+    document.querySelectorAll('input[type=checkbox]').forEach(el => el.addEventListener('change', cargarInventario));
+    document.getElementById('prevPageBtn').onclick = () => { if(currentPage > 1) { currentPage--; renderizarTabla(); }};
+    document.getElementById('nextPageBtn').onclick = () => { if(currentPage < Math.ceil(filteredItems.length / itemsPerPage)) { currentPage++; renderizarTabla(); }};
+
+    cargarInventario();
+</script>
+{% endblock %}

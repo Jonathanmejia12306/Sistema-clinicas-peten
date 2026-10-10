@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Iniciar Sesión - Clínica</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        clinica: {
+                            primary: '#23807A',   // Teal
+                            bg: '#F3E2DA',        // Rosa Pálido
+                            surface: '#ffffff'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-clinica-bg h-screen flex items-center justify-center p-4">
+
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden transform transition hover:scale-105 duration-300">
+        
+        <!-- Header -->
+        <div class="bg-clinica-primary p-8 flex flex-col items-center">
+            <div class="bg-white p-3 rounded-full shadow-lg mb-4">
+                <!-- Asegúrate de tener tu logo en static/img/LOGOTIPO.png -->
+                <img src="{{ url_for('static', filename='img/LOGOTIPO.png') }}" alt="Logo" class="h-20 w-auto object-contain">
+            </div>
+            <h2 class="text-2xl font-bold text-white tracking-widest uppercase">Bienvenido</h2>
+        </div>
+
+        <!-- Formulario -->
+        <div class="p-8 pt-6">
+            
+            {% with messages = get_flashed_messages(with_categories=true) %}
+              {% if messages %}
+                {% for category, message in messages %}
+                    <div class="mb-4 p-3 rounded text-sm text-center font-medium 
+                        {% if category == 'error' %} bg-red-100 text-red-700 
+                        {% else %} bg-blue-100 text-blue-700 {% endif %}">
+                        {{ message }}
+                    </div>
+                {% endfor %}
+              {% endif %}
+            {% endwith %}
+
+            <form method="POST" action="{{ url_for('login') }}">
+                <div class="mb-5">
+                    <label class="block text-gray-600 text-xs font-bold mb-2 uppercase tracking-wide" for="username">Usuario</label>
+                    <input class="w-full px-4 py-2 rounded border border-gray-300 focus:outline-none focus:border-clinica-primary focus:ring-1 focus:ring-clinica-primary transition" 
+                           id="username" name="username" type="text" placeholder="Usuario" required autofocus>
+                </div>
+                
+                <div class="mb-8">
+                    <label class="block text-gray-600 text-xs font-bold mb-2 uppercase tracking-wide" for="password">Contraseña</label>
+                    <input class="w-full px-4 py-2 rounded border border-gray-300 focus:outline-none focus:border-clinica-primary focus:ring-1 focus:ring-clinica-primary transition" 
+                           id="password" name="password" type="password" placeholder="••••••••" required>
+                </div>
+                
+                <button class="w-full bg-clinica-primary hover:bg-[#1b635e] text-white font-bold py-3 px-4 rounded shadow-lg transition duration-200" type="submit">
+                    INGRESAR
+                </button>
+            </form>
+        </div>
+        
+        <div class="bg-gray-50 px-8 py-3 text-center border-t border-gray-100">
+            <p class="text-[10px] text-gray-400 uppercase tracking-widest">Sistema de Gestión Clínica &copy; 2025</p>
+        </div>
+    </div>
+
+</body>
+</html>

@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Clínica - {% block title %}{% endblock %}</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- FontAwesome -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    
+    <!-- CONFIGURACIÓN DE COLORES -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        clinica: {
+                            primary: '#23807A',   // Verde Teal
+                            dark: '#1B635E',      // Teal más oscuro
+                            light: '#4FD1C5',     // Teal claro
+                            bg: '#F9FAFB',        
+                            text: '#2D3748',      
+                            surface: '#ffffff'    
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <style>
+        @media print {
+            aside, header, .no-print { display: none !important; }
+            main { margin: 0; padding: 0; width: 100%; }
+            body { background-color: white; }
+            .bg-clinica-bg { background-color: white !important; }
+        }
+        aside nav::-webkit-scrollbar { width: 4px; }
+        aside nav::-webkit-scrollbar-thumb { background-color: rgba(255,255,255,0.3); border-radius: 4px; }
+    </style>
+</head>
+<body class="bg-clinica-bg text-gray-800 font-sans antialiased h-screen flex overflow-hidden">
+
+    <!-- SIDEBAR -->
+    <aside class="bg-clinica-primary text-white w-64 flex flex-col shadow-2xl z-30 transition-transform duration-300 ease-in-out transform -translate-x-full md:translate-x-0 absolute md:relative h-full" id="sidebar">
+        
+        <!-- LOGO -->
+        <div class="p-6 flex flex-col items-center justify-center border-b border-white/10">
+            <div class="bg-white rounded-xl p-2 w-32 h-24 flex items-center justify-center shadow-lg mb-3">
+                <img src="{{ url_for('static', filename='img/LOGOTIPO.png') }}" alt="Logo" class="max-h-full max-w-full object-contain">
+            </div>
+            <h1 class="text-lg font-bold tracking-widest uppercase text-white/90">CLÍNICA</h1>
+        </div>
+
+        <!-- MENÚ DE NAVEGACIÓN -->
+        <nav class="flex-1 overflow-y-auto py-4">
+            <ul class="space-y-1">
+                <li>
+                    <a href="{{ url_for('dashboard') }}" class="flex items-center px-6 py-3 transition-all duration-200 {% if active_page == 'dashboard' %} bg-white/20 border-l-4 border-white font-bold {% else %} text-white/80 hover:bg-white/10 hover:text-white {% endif %}">
+                        <i class="fas fa-tachometer-alt w-6 text-center"></i>
+                        <span class="ml-3">Dashboard</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="{{ url_for('pacientes') }}" class="flex items-center px-6 py-3 transition-all duration-200 {% if active_page == 'pacientes' %} bg-white/20 border-l-4 border-white font-bold {% else %} text-white/80 hover:bg-white/10 hover:text-white {% endif %}">
+                        <i class="fas fa-users w-6 text-center"></i>
+                        <span class="ml-3">Pacientes</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="{{ url_for('inventario') }}" class="flex items-center px-6 py-3 transition-all duration-200 {% if active_page == 'inventario' %} bg-white/20 border-l-4 border-white font-bold {% else %} text-white/80 hover:bg-white/10 hover:text-white {% endif %}">
+                        <i class="fas fa-boxes w-6 text-center"></i>
+                        <span class="ml-3">Inventario</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="{{ url_for('ventas') }}" class="flex items-center px-6 py-3 transition-all duration-200 {% if active_page == 'ventas' %} bg-white/20 border-l-4 border-white font-bold {% else %} text-white/80 hover:bg-white/10 hover:text-white {% endif %}">
+                        <i class="fas fa-cash-register w-6 text-center"></i>
+                        <span class="ml-3">Caja / Ventas</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="{{ url_for('citas') }}" class="flex items-center px-6 py-3 transition-all duration-200 {% if active_page == 'citas' %} bg-white/20 border-l-4 border-white font-bold {% else %} text-white/80 hover:bg-white/10 hover:text-white {% endif %}">
+                        <i class="fas fa-calendar-alt w-6 text-center"></i>
+                        <span class="ml-3">Agenda de Citas</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="{{ url_for('creditos') }}" class="flex items-center px-6 py-3 transition-all duration-200 {% if active_page == 'creditos' %} bg-white/20 border-l-4 border-white font-bold {% else %} text-white/80 hover:bg-white/10 hover:text-white {% endif %}">
+                        <i class="fas fa-hand-holding-usd w-6 text-center"></i>
+                        <span class="ml-3">Ctas. por Cobrar</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="{{ url_for('pagos') }}" class="flex items-center px-6 py-3 transition-all duration-200 {% if active_page == 'pagos' %} bg-white/20 border-l-4 border-white font-bold {% else %} text-white/80 hover:bg-white/10 hover:text-white {% endif %}">
+                        <i class="fas fa-file-invoice-dollar w-6 text-center"></i>
+                        <span class="ml-3">Ctas. por Pagar</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="{{ url_for('historial_cierres') }}" class="flex items-center px-6 py-3 transition-all duration-200 {% if active_page == 'reportes' %} bg-white/20 border-l-4 border-white font-bold {% else %} text-white/80 hover:bg-white/10 hover:text-white {% endif %}">
+                        <i class="fas fa-chart-line w-6 text-center"></i>
+                        <span class="ml-3">Reportes</span>
+                    </a>
+                </li>
+
+                <!-- SECCIONES SOLO PARA ADMINISTRADORES -->
+                {% if current_user.rol == 'admin' %}
+                <div class="mt-4 pt-4 border-t border-white/10">
+                    <p class="px-6 text-[10px] uppercase text-teal-200 font-bold mb-2">Administración</p>
+                    <li>
+                        <a href="{{ url_for('lista_usuarios') }}" class="flex items-center px-6 py-3 transition-all duration-200 {% if active_page == 'usuarios' %} bg-white/20 border-l-4 border-white font-bold {% else %} text-white/80 hover:bg-white/10 hover:text-white {% endif %}">
+                            <i class="fas fa-user-shield w-6 text-center"></i>
+                            <span class="ml-3">Usuarios</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="{{ url_for('eliminados_recientemente') }}" class="flex items-center px-6 py-3 transition-all duration-200 {% if active_page == 'eliminados_recientemente' %} bg-white/20 border-l-4 border-white font-bold {% else %} text-white/80 hover:bg-white/10 hover:text-white {% endif %}">
+                            <i class="fas fa-trash-alt w-6 text-center"></i>
+                            <span class="ml-3">Papelera</span>
+                        </a>
+                    </li>
+                </div>
+                {% endif %}
+            </ul>
+        </nav>
+
+        <!-- INFO USUARIO Y LOGOUT -->
+        <div class="p-4 border-t border-white/10 bg-clinica-dark/30">
+            {% if current_user.is_authenticated %}
+            <div class="flex items-center mb-4 px-2">
+                <div class="h-10 w-10 rounded-full bg-white text-clinica-primary flex items-center justify-center font-bold text-sm shadow-md uppercase">
+                    {{ current_user.nombre[0] }}
+                </div>
+                <div class="ml-3 overflow-hidden">
+                    <p class="text-sm font-semibold text-white leading-tight truncate">{{ current_user.nombre }}</p>
+                    <p class="text-[10px] text-teal-200 uppercase tracking-wide">{{ current_user.rol }}</p>
+                </div>
+            </div>
+            {% endif %}
+            <a href="{{ url_for('logout') }}" class="flex items-center justify-center py-2 px-4 rounded bg-red-500/10 hover:bg-red-500 text-teal-100 hover:text-white transition duration-200 text-sm font-medium border border-red-500/30">
+                <i class="fas fa-sign-out-alt mr-2"></i> Cerrar Sesión
+            </a>
+        </div>
+    </aside>
+
+    <!-- CONTENIDO PRINCIPAL -->
+    <div class="flex-1 flex flex-col h-full overflow-hidden">
+        <header class="bg-white shadow-sm h-16 flex items-center justify-between px-4 md:hidden z-20 shrink-0">
+            <button id="mobile-menu-btn" class="text-clinica-primary p-2 rounded hover:bg-gray-100">
+                <i class="fas fa-bars fa-lg"></i>
+            </button>
+            <h1 class="text-lg font-bold text-clinica-primary tracking-widest">CLÍNICA</h1>
+            <div class="w-8"></div>
+        </header>
+
+        <main class="flex-1 overflow-x-hidden overflow-y-auto bg-clinica-bg p-4 md:p-8">
+            
+            <!-- MENSAJES FLASH -->
+            {% with messages = get_flashed_messages(with_categories=true) %}
+              {% if messages %}
+                <div class="mb-6 space-y-2 no-print">
+                  {% for category, message in messages %}
+                    <div class="p-4 rounded-lg border flex items-center shadow-sm {% if category == 'error' %}bg-red-50 border-red-200 text-red-700{% else %}bg-emerald-50 border-emerald-200 text-emerald-700{% endif %}">
+                      <i class="fas {% if category == 'error' %}fa-exclamation-circle{% else %}fa-check-circle{% endif %} mr-3"></i>
+                      <span class="text-sm font-medium">{{ message }}</span>
+                    </div>
+                  {% endfor %}
+                </div>
+              {% endif %}
+            {% endwith %}
+
+            {% block content %}{% endblock %}
+        </main>
+    </div>
+
+    <div id="sidebar-overlay" class="fixed inset-0 bg-black bg-opacity-50 z-20 hidden md:hidden"></div>
+
+    <script>
+        const btn = document.getElementById('mobile-menu-btn');
+        const sidebar = document.getElementById('sidebar');
+        const overlay = document.getElementById('sidebar-overlay');
+        if(btn){
+            function toggleSidebar() { sidebar.classList.toggle('-translate-x-full'); overlay.classList.toggle('hidden'); }
+            btn.addEventListener('click', toggleSidebar); overlay.addEventListener('click', toggleSidebar);
+        }
+    </script>
+</body>
+</html>

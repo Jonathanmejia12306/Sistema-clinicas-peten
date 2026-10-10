@@ -1,0 +1,444 @@
+{% extends 'layout.html' %}
+{% block title %}Cuentas por Pagar{% endblock %}
+
+{% block content %}
+<style>
+    :root {
+        --color-petroleo: #1F7A7A;
+        --color-salvia: #7FB2B2;
+        --color-arena: #EDC988;
+        --color-fondo: #F3E6E0;
+        --color-neutro: #BCCCD1;
+    }
+
+    .text-petroleo { color: var(--color-petroleo); }
+
+    /* Botones */
+    .btn-primary {
+        background-color: var(--color-petroleo);
+        color: white;
+        transition: background-color 0.3s;
+    }
+    .btn-primary:hover { background-color: #165e5e; }
+
+    /* Inputs */
+    .input-custom {
+        border: 1px solid var(--color-neutro);
+        transition: all 0.3s;
+    }
+    .input-custom:focus {
+        outline: none;
+        border-color: var(--color-petroleo);
+        box-shadow: 0 0 0 3px rgba(31, 122, 122, 0.1);
+    }
+
+    /* Tabla */
+    .table-header {
+        background-color: var(--color-salvia);
+        color: white;
+    }
+
+    /* Cards */
+    .content-card {
+        border-top: 5px solid var(--color-arena);
+    }
+
+    /* Widget Deuda */
+    .debt-widget {
+        background: white;
+        border-left: 5px solid #EF4444; /* Rojo */
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+</style>
+
+<!-- Encabezado y Widget -->
+<div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-6">
+    <div>
+        <h2 class="text-3xl font-bold text-petroleo">Cuentas por Pagar</h2>
+        <p class="text-gray-500 mt-1">Control de facturas de proveedores y gastos operativos.</p>
+    </div>
+
+    <!-- Widget Total a Pagar -->
+    <div class="flex flex-col sm:flex-row gap-4 w-full md:w-auto items-stretch sm:items-center">
+        <div class="debt-widget p-4 rounded-r-lg flex items-center gap-4 flex-grow sm:flex-grow-0">
+            <div class="bg-red-50 p-3 rounded-full text-red-500">
+                <i class="fas fa-file-invoice-dollar text-xl"></i>
+            </div>
+            <div class="text-right">
+                <p class="text-xs text-gray-500 font-bold uppercase tracking-wide">Total a Pagar</p>
+                <p class="text-2xl font-bold text-red-600">Q{{ "%.2f"|format(total_pendiente) }}</p>
+            </div>
+        </div>
+        
+        <button onclick="document.getElementById('modalNuevoGasto').classList.remove('hidden')" 
+                class="btn-primary px-6 py-3 rounded-md font-bold shadow-md flex items-center justify-center whitespace-nowrap">
+            <i class="fas fa-plus mr-2"></i> Registrar Factura
+        </button>
+    </div>
+</div>
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+    {% for category, message in messages %}
+      <div class="p-4 mb-6 rounded-lg shadow-sm border-l-4 {% if category == 'success' %} bg-green-50 border-green-500 text-green-700 {% else %} bg-red-50 border-red-500 text-red-700 {% endif %}" role="alert">
+        <span class="font-medium">{{ message }}</span>
+      </div>
+    {% endfor %}
+  {% endif %}
+{% endwith %}
+
+<div class="bg-white p-6 md:p-8 rounded-lg shadow-md w-full content-card">
+    
+    <!-- Filtros -->
+    <div class="flex flex-col lg:flex-row gap-4 items-end mb-6 p-4 rounded-lg border border-gray-100" style="background-color: var(--color-fondo);">
+        <div class="w-full lg:flex-grow">
+            <label class="block text-xs font-bold text-gray-500 mb-1 uppercase">Buscar</label>
+            <div class="relative">
+                <input type="text" id="searchGasto" placeholder="Descripción, proveedor..." 
+                       class="input-custom w-full pl-10 pr-4 py-2 rounded-md bg-white">
+                <i class="fas fa-search absolute left-3 top-3 text-gray-400"></i>
+            </div>
+        </div>
+        
+        <div class="w-full lg:w-auto">
+            <label class="block text-xs font-bold text-gray-500 mb-1 uppercase">Estado</label>
+            <select id="filtroEstado" class="input-custom w-full lg:w-40 py-2 px-3 rounded-md bg-white cursor-pointer">
+                <option value="todos">Todos</option>
+                <option value="pendiente" selected>Pendientes</option>
+                <option value="pagado">Pagados</option>
+            </select>
+        </div>
+
+        <div class="w-full lg:w-auto pb-2">
+            <label class="inline-flex items-center cursor-pointer select-none">
+                <input type="checkbox" id="filtroProximos" class="form-checkbox h-5 w-5 text-orange-600 rounded border-gray-300 focus:ring-orange-500">
+                <span class="ml-2 text-sm text-gray-700 font-bold">⚠️ Vencen en 15 días</span>
+            </label>
+        </div>
+    </div>
+
+    <!-- Tabla -->
+    <div class="overflow-x-auto rounded-t-lg border border-gray-100">
+        <table class="min-w-full bg-white">
+            <thead class="table-header">
+                <tr>
+                    <th class="py-3 px-6 text-left text-xs font-semibold uppercase tracking-wider">Descripción</th>
+                    <th class="py-3 px-6 text-left text-xs font-semibold uppercase tracking-wider">Proveedor</th>
+                    <th class="py-3 px-6 text-center text-xs font-semibold uppercase tracking-wider">Vencimiento</th>
+                    <th class="py-3 px-6 text-right text-xs font-semibold uppercase tracking-wider">Monto</th>
+                    <th class="py-3 px-6 text-center text-xs font-semibold uppercase tracking-wider">Estado</th>
+                    <th class="py-3 px-6 text-center text-xs font-semibold uppercase tracking-wider">Acciones</th>
+                </tr>
+            </thead>
+            <tbody id="tablaGastos" class="divide-y divide-gray-200">
+                <tr><td colspan="6" class="text-center py-10 text-gray-500"><i class="fas fa-spinner fa-spin mr-2"></i>Cargando...</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- MODAL NUEVO GASTO -->
+<div id="modalNuevoGasto" class="fixed inset-0 bg-gray-900 bg-opacity-60 hidden overflow-y-auto h-full w-full z-50 flex items-center justify-center backdrop-blur-sm">
+    <div class="relative p-0 border-0 w-full max-w-lg shadow-2xl rounded-xl bg-white">
+        <div class="bg-brand-petroleo p-5 rounded-t-xl text-white flex justify-between items-center" style="background-color: var(--color-petroleo);">
+            <h3 class="text-xl font-bold"><i class="fas fa-file-invoice mr-2"></i>Registrar Factura</h3>
+            <button onclick="document.getElementById('modalNuevoGasto').classList.add('hidden')" class="text-white opacity-70 hover:opacity-100 transition"><i class="fas fa-times text-xl"></i></button>
+        </div>
+        
+        <div class="p-6">
+            <form action="{{ url_for('nuevo_gasto') }}" method="POST">
+                <div class="mb-4">
+                    <label class="block text-gray-700 text-sm font-bold mb-2">Descripción <span class="text-red-500">*</span></label>
+                    <input type="text" name="descripcion" required class="input-custom w-full px-3 py-2 rounded-md" placeholder="Ej: Compra de Insumos">
+                </div>
+                <div class="grid grid-cols-2 gap-4 mb-4">
+                    <div>
+                        <label class="block text-gray-700 text-sm font-bold mb-2">Proveedor</label>
+                        <input type="text" name="proveedor" class="input-custom w-full px-3 py-2 rounded-md" placeholder="Ej: Farmacia X">
+                    </div>
+                    <div>
+                        <label class="block text-gray-700 text-sm font-bold mb-2">Monto (Q) <span class="text-red-500">*</span></label>
+                        <input type="number" step="0.01" name="monto" required class="input-custom w-full px-3 py-2 rounded-md font-bold" placeholder="0.00">
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-4 mb-6">
+                    <div>
+                        <label class="block text-gray-700 text-sm font-bold mb-2">Fecha Emisión</label>
+                        <input type="date" name="fecha_emision" class="input-custom w-full px-3 py-2 rounded-md">
+                    </div>
+                    <div>
+                        <label class="block text-gray-700 text-sm font-bold mb-2">Fecha Vencimiento</label>
+                        <input type="date" name="fecha_vencimiento" class="input-custom w-full px-3 py-2 rounded-md">
+                    </div>
+                </div>
+                <div class="flex justify-end gap-3 border-t pt-4 mt-2">
+                    <button type="button" onclick="document.getElementById('modalNuevoGasto').classList.add('hidden')" class="px-4 py-2 bg-gray-100 text-gray-600 rounded-md hover:bg-gray-200 transition font-medium">Cancelar</button>
+                    <button type="submit" class="btn-primary px-6 py-2 rounded-md font-bold shadow-md">Guardar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL PAGAR -->
+<div id="modalPagar" class="fixed inset-0 bg-gray-900 bg-opacity-60 hidden overflow-y-auto h-full w-full z-50 flex items-center justify-center backdrop-blur-sm">
+    <div class="relative p-0 border-0 w-full max-w-md shadow-2xl rounded-xl bg-white">
+        <div class="bg-green-600 p-5 rounded-t-xl text-white flex justify-between items-center">
+            <h3 class="text-xl font-bold"><i class="fas fa-check-circle mr-2"></i>Confirmar Pago</h3>
+            <button onclick="document.getElementById('modalPagar').classList.add('hidden')" class="text-white hover:text-gray-200"><i class="fas fa-times"></i></button>
+        </div>
+        
+        <div class="p-6">
+            <div class="bg-green-50 p-4 rounded-md border border-green-100 mb-6">
+                <p class="text-sm text-green-800">Vas a saldar por completo el pendiente de:</p>
+                <p id="lblDescPago" class="font-bold text-gray-800 text-lg mt-1">-</p>
+                <p class="text-right mt-2 text-2xl font-bold text-green-700" id="lblMontoPago">-</p>
+            </div>
+
+            <form id="formPagar" method="POST" enctype="multipart/form-data">
+                <div class="mb-4">
+                    <label class="block text-gray-700 text-sm font-bold mb-2">Fecha del Pago</label>
+                    <input type="date" name="fecha_pago" id="inputFechaPago" required class="input-custom w-full px-3 py-2 rounded-md">
+                </div>
+
+                <div class="mb-6">
+                    <label class="block text-gray-700 text-sm font-bold mb-2">Comprobante (Opcional)</label>
+                    <div class="flex items-center justify-center w-full">
+                        <label class="flex flex-col w-full h-32 border-2 border-dashed border-gray-300 hover:bg-gray-50 hover:border-gray-400 rounded-lg cursor-pointer transition">
+                            <div class="flex flex-col items-center justify-center pt-7">
+                                <i class="fas fa-cloud-upload-alt text-3xl text-gray-400 mb-2"></i>
+                                <p class="text-sm text-gray-500 font-medium">Click para subir imagen/PDF</p>
+                            </div>
+                            <input type="file" name="comprobante" class="hidden" accept="image/*,application/pdf">
+                        </label>
+                    </div>
+                </div>
+
+                <div class="flex justify-end gap-3">
+                    <button type="button" onclick="document.getElementById('modalPagar').classList.add('hidden')" class="px-4 py-2 bg-gray-100 text-gray-600 rounded-md hover:bg-gray-200 transition font-medium">Cancelar</button>
+                    <button type="submit" class="px-6 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 font-bold shadow-md">Confirmar Pago</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL ABONAR -->
+<div id="modalAbonar" class="fixed inset-0 bg-gray-900 bg-opacity-60 hidden overflow-y-auto h-full w-full z-50 flex items-center justify-center backdrop-blur-sm">
+    <div class="relative p-0 border-0 w-full max-w-md shadow-2xl rounded-xl bg-white">
+        <div class="bg-blue-600 p-5 rounded-t-xl text-white flex justify-between items-center">
+            <h3 class="text-xl font-bold"><i class="fas fa-hand-holding-usd mr-2"></i>Registrar Abono</h3>
+            <button onclick="document.getElementById('modalAbonar').classList.add('hidden')" class="text-white hover:text-gray-200"><i class="fas fa-times"></i></button>
+        </div>
+
+        <div class="p-6">
+            <div class="bg-blue-50 p-4 rounded-md border border-blue-100 mb-6">
+                <p class="text-sm text-blue-800">Factura:</p>
+                <p id="lblDescAbono" class="font-bold text-gray-800 text-lg mt-1">-</p>
+                <p class="text-sm text-gray-500 mt-2">Monto original: <span id="lblMontoOriginalAbono" class="font-bold">-</span></p>
+                <p class="text-right mt-1 text-2xl font-bold text-blue-700">Saldo: <span id="lblSaldoAbono">-</span></p>
+            </div>
+
+            <form id="formAbonar" method="POST">
+                <div class="mb-4">
+                    <label class="block text-gray-700 text-sm font-bold mb-2">Monto a Abonar (Q) <span class="text-red-500">*</span></label>
+                    <input type="number" step="0.01" min="0.01" name="monto_abono" id="inputMontoAbono" required class="input-custom w-full px-3 py-2 rounded-md font-bold" placeholder="0.00">
+                </div>
+                <div class="mb-4">
+                    <label class="block text-gray-700 text-sm font-bold mb-2">Método de Pago</label>
+                    <select name="metodo_abono" id="inputMetodoAbono" required class="input-custom w-full px-3 py-2 rounded-md bg-white">
+                        <option value="Efectivo" selected>Efectivo</option>
+                        <option value="Tarjeta">Tarjeta (Crédito/Débito)</option>
+                        <option value="Transferencia">Transferencia</option>
+                    </select>
+                </div>
+                <div class="mb-6 hidden" id="campoReferenciaAbono">
+                    <label class="block text-gray-700 text-sm font-bold mb-2">Referencia (Opcional)</label>
+                    <input type="text" name="referencia_abono" class="input-custom w-full px-3 py-2 rounded-md" placeholder="No. de transacción, boleta, etc.">
+                </div>
+
+                <div class="flex justify-end gap-3 border-t pt-4 mt-2">
+                    <button type="button" onclick="document.getElementById('modalAbonar').classList.add('hidden')" class="px-4 py-2 bg-gray-100 text-gray-600 rounded-md hover:bg-gray-200 transition font-medium">Cancelar</button>
+                    <button type="submit" class="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 font-bold shadow-md">Registrar Abono</button>
+                </div>
+            </form>
+
+            <div class="mt-6 border-t pt-4">
+                <p class="text-xs font-bold text-gray-500 uppercase mb-2">Historial de Abonos</p>
+                <div id="historialAbonos" class="max-h-40 overflow-y-auto text-sm divide-y divide-gray-100">
+                    <p class="text-gray-400 italic py-2">Cargando...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const searchInput = document.getElementById('searchGasto');
+    const filtroEstado = document.getElementById('filtroEstado');
+    const filtroProximos = document.getElementById('filtroProximos');
+    const tablaGastos = document.getElementById('tablaGastos');
+
+    function cargarGastos() {
+        const q = searchInput.value;
+        const estado = filtroEstado.value;
+        const proximos = filtroProximos.checked;
+        
+        const url = `/api/pagos/buscar?q=${encodeURIComponent(q)}&estado=${estado}&proximos=${proximos}`;
+        
+        fetch(url)
+            .then(response => response.json())
+            .then(data => {
+                tablaGastos.innerHTML = '';
+                if (data.length === 0) {
+                    tablaGastos.innerHTML = `<tr><td colspan="6" class="text-center py-10 text-gray-400 italic">No se encontraron facturas.</td></tr>`;
+                    return;
+                }
+                
+                data.forEach(g => {
+                    const tr = document.createElement('tr');
+                    tr.className = "hover:bg-gray-50 transition border-b border-gray-100";
+                    
+                    let estadoHtml = '', accionesHtml = '', vencimientoHtml = '';
+                    
+                    if (g.estado === 'Pendiente' || g.estado === 'Parcial') {
+                        const saldo = (g.saldo_pendiente !== null && g.saldo_pendiente !== undefined) ? g.saldo_pendiente : g.monto;
+
+                        if (g.estado === 'Parcial') {
+                            estadoHtml = `<span class="bg-orange-50 text-orange-700 px-3 py-1 rounded-full text-xs font-bold border border-orange-100">Parcial</span>`;
+                        } else {
+                            estadoHtml = `<span class="bg-red-50 text-red-700 px-3 py-1 rounded-full text-xs font-bold border border-red-100">Pendiente</span>`;
+                        }
+
+                        accionesHtml = `
+                            <button onclick="abrirModalAbonar('${g.id}', '${g.descripcion.replace(/'/g, "\\'")}', '${g.monto}', '${saldo}')"
+                                    class="bg-blue-50 text-blue-600 hover:bg-blue-500 hover:text-white border border-blue-200 w-8 h-8 rounded-full flex items-center justify-center transition mr-1" title="Registrar Abono">
+                                <i class="fas fa-hand-holding-usd"></i>
+                            </button>
+                            <button onclick="abrirModalPagar('${g.id}', '${g.descripcion.replace(/'/g, "\\'")}', '${saldo}')"
+                                    class="bg-green-50 text-green-600 hover:bg-green-500 hover:text-white border border-green-200 w-8 h-8 rounded-full flex items-center justify-center transition mr-1" title="Pagar saldo total">
+                                <i class="fas fa-check"></i>
+                            </button>
+                            <form action="/pagos/eliminar/${g.id}" method="POST" onsubmit="return confirm('¿Eliminar este registro?');" class="inline">
+                                <button type="submit" class="bg-red-50 text-red-500 hover:bg-red-500 hover:text-white border border-red-200 w-8 h-8 rounded-full flex items-center justify-center transition" title="Eliminar">
+                                    <i class="fas fa-trash-alt"></i>
+                                </button>
+                            </form>
+                        `;
+
+                        if (g.fecha_vencimiento) {
+                            const hoy = new Date();
+                            const venc = new Date(g.fecha_vencimiento);
+                            const diffTime = venc - hoy;
+                            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
+                            
+                            let colorVenc = "text-gray-600";
+                            let icon = "";
+                            if (diffDays < 0) { colorVenc = "text-red-600 font-bold"; icon = '<i class="fas fa-exclamation-circle mr-1"></i>'; }
+                            else if (diffDays <= 15) { colorVenc = "text-orange-600 font-bold"; icon = '<i class="fas fa-clock mr-1"></i>'; }
+                            
+                            vencimientoHtml = `<span class="${colorVenc} text-sm">${icon}${g.fecha_vencimiento}</span>`;
+                        } else {
+                            vencimientoHtml = `<span class="text-gray-400 text-sm">-</span>`;
+                        }
+                        
+                    } else {
+                        estadoHtml = `<span class="bg-green-50 text-green-700 px-3 py-1 rounded-full text-xs font-bold border border-green-100">Pagado</span>`;
+                        vencimientoHtml = `<span class="text-xs text-green-600"><i class="fas fa-calendar-check mr-1"></i>${g.fecha_pago || ''}</span>`;
+                        
+                        if (g.comprobante_ruta) {
+                            accionesHtml = `
+                                <a href="/uploads/comprobantes/${g.comprobante_ruta}" target="_blank" class="text-blue-500 hover:text-blue-700 text-lg" title="Ver Comprobante">
+                                    <i class="fas fa-paperclip"></i>
+                                </a>
+                            `;
+                        } else {
+                             accionesHtml = `<span class="text-gray-300"><i class="fas fa-check-double"></i></span>`;
+                        }
+                    }
+
+                    let montoHtml = `Q${g.monto.toFixed(2)}`;
+                    if (g.estado === 'Parcial') {
+                        const saldoMostrar = (g.saldo_pendiente !== null && g.saldo_pendiente !== undefined) ? g.saldo_pendiente : g.monto;
+                        montoHtml = `Q${g.monto.toFixed(2)}<br><span class="text-xs font-normal text-orange-600">Saldo: Q${saldoMostrar.toFixed(2)}</span>`;
+                    }
+
+                    tr.innerHTML = `
+                        <td class="py-4 px-6 font-medium text-gray-800">${g.descripcion}</td>
+                        <td class="py-4 px-6 text-gray-500 text-sm">${g.proveedor || '-'}</td>
+                        <td class="py-4 px-6 text-center whitespace-nowrap">${vencimientoHtml}</td>
+                        <td class="py-4 px-6 text-right font-bold text-gray-800">${montoHtml}</td>
+                        <td class="py-4 px-6 text-center">${estadoHtml}</td>
+                        <td class="py-4 px-6 text-center whitespace-nowrap">${accionesHtml}</td>
+                    `;
+                    
+                    tablaGastos.appendChild(tr);
+                });
+            });
+    }
+
+    searchInput.addEventListener('input', cargarGastos);
+    filtroEstado.addEventListener('change', cargarGastos);
+    filtroProximos.addEventListener('change', cargarGastos);
+
+    document.addEventListener('DOMContentLoaded', () => {
+        cargarGastos();
+        const today = new Date().toISOString().split('T')[0];
+        document.getElementById('inputFechaPago').value = today;
+    });
+
+    function abrirModalPagar(id, descripcion, saldo) {
+        const modal = document.getElementById('modalPagar');
+        const form = document.getElementById('formPagar');
+        document.getElementById('lblDescPago').textContent = descripcion;
+        document.getElementById('lblMontoPago').textContent = 'Q' + parseFloat(saldo).toFixed(2);
+
+        form.action = `/pagos/pagar/${id}`;
+        modal.classList.remove('hidden');
+    }
+
+    const inputMetodoAbono = document.getElementById('inputMetodoAbono');
+    const campoReferenciaAbono = document.getElementById('campoReferenciaAbono');
+    inputMetodoAbono.addEventListener('change', function() {
+        campoReferenciaAbono.classList.toggle('hidden', this.value === 'Efectivo');
+    });
+
+    function abrirModalAbonar(id, descripcion, montoOriginal, saldo) {
+        const modal = document.getElementById('modalAbonar');
+        const form = document.getElementById('formAbonar');
+        document.getElementById('lblDescAbono').textContent = descripcion;
+        document.getElementById('lblMontoOriginalAbono').textContent = 'Q' + parseFloat(montoOriginal).toFixed(2);
+        document.getElementById('lblSaldoAbono').textContent = 'Q' + parseFloat(saldo).toFixed(2);
+
+        const inputMonto = document.getElementById('inputMontoAbono');
+        inputMonto.max = saldo;
+        inputMonto.value = '';
+
+        form.action = `/pagos/abonar/${id}`;
+        cargarHistorialAbonos(id);
+        modal.classList.remove('hidden');
+    }
+
+    function cargarHistorialAbonos(idGasto) {
+        const cont = document.getElementById('historialAbonos');
+        cont.innerHTML = `<p class="text-gray-400 italic py-2">Cargando...</p>`;
+        fetch(`/api/pagos/${idGasto}/abonos`)
+            .then(res => res.json())
+            .then(data => {
+                if (data.length === 0) {
+                    cont.innerHTML = `<p class="text-gray-400 italic py-2">Sin abonos registrados aún.</p>`;
+                    return;
+                }
+                cont.innerHTML = data.map(a => `
+                    <div class="flex justify-between items-center py-2">
+                        <div>
+                            <p class="font-medium text-gray-700">Q${a.monto.toFixed(2)} <span class="text-xs text-gray-400 font-normal">(${a.metodo_pago})</span></p>
+                            <p class="text-xs text-gray-400">${a.fecha_abono}</p>
+                        </div>
+                        <p class="text-xs text-gray-500">Saldo: Q${(a.saldo_actual_snapshot || 0).toFixed(2)}</p>
+                    </div>
+                `).join('');
+            });
+    }
+</script>
+{% endblock %}

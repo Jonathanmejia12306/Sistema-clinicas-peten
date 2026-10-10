@@ -1,0 +1,201 @@
+/* Estilos para expediente_form.html y otros formularios */
+.expediente-header, .form-section {
+    background-color: #fff;
+    padding: 2rem;
+    border-radius: 8px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    margin-bottom: 2rem;
+}
+.expediente-header {
+    display: flex;
+    gap: 1.5rem;
+    align-items: center;
+    flex-wrap: wrap;
+}
+.form-group {
+    margin-bottom: 1rem;
+    flex-grow: 1;
+}
+.form-group label {
+    display: block;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+    color: #374151;
+}
+.form-group input[type="text"],
+.form-group input[type="date"],
+.form-group input[type="time"],
+.form-group input[type="number"],
+.form-group select,
+.form-group textarea {
+    width: 100%;
+    padding: 0.75rem;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    font-size: 1rem;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+.form-group input[readonly] {
+    background-color: #f3f4f6;
+    cursor: not-allowed;
+    color: #4b5563;
+}
+.form-group input:focus,
+.form-group input[type="time"]:focus,
+.form-group input[type="number"]:focus,
+.form-group select:focus,
+.form-group textarea:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.4);
+}
+.expediente-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2rem;
+    margin-top: 1.5rem;
+    margin-bottom: 1.5rem;
+}
+.grid-column h4 {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: #1f2937;
+    margin-bottom: 1rem;
+    border-bottom: 2px solid #e5e7eb;
+    padding-bottom: 0.5rem;
+}
+.skincare-section + .skincare-section {
+    margin-top: 2rem;
+}
+.form-actions {
+    text-align: right;
+    margin-top: 2rem;
+}
+.add-new-button {
+    background-color: #10b981;
+    color: white;
+    padding: 0.75rem 1.5rem;
+    border: none;
+    border-radius: 6px;
+    font-weight: 600;
+    cursor: pointer;
+}
+.section-divider {
+    margin: 2.5rem 0;
+    border: none;
+    border-top: 1px solid #e5e7eb;
+}
+.sesiones-section h2, .documentos-section h2 {
+    font-size: 1.5rem;
+    font-weight: 700;
+    margin-bottom: 1.5rem;
+}
+.sesiones-list, .documentos-list {
+    margin-top: 2rem;
+}
+.sesion-item, .documento-item {
+    background-color: #f9fafb;
+    padding: 1.25rem;
+    border-radius: 8px;
+    margin-bottom: 1rem;
+    border-left: 4px solid #3b82f6;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+.documento-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+.sesion-item p {
+    margin: 0.25rem 0;
+    color: #374151;
+}
+.documento-item a {
+    color: #3b82f6;
+    text-decoration: none;
+    font-weight: 500;
+}
+.documento-fecha {
+    font-size: 0.8rem;
+    color: #6b7280;
+}
+@media (max-width: 768px) {
+    .expediente-grid {
+        grid-template-columns: 1fr;
+    }
+    .expediente-header {
+        flex-direction: column;
+        align-items: stretch;
+    }
+}
+.search-results-container {
+    display: none;
+    position: absolute;
+    width: 100%;
+    max-height: 200px;
+    overflow-y: auto;
+    background-color: #fff;
+    border: 1px solid #d1d5db;
+    border-top: none;
+    border-radius: 0 0 6px 6px;
+    z-index: 10;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+.search-result-item {
+    padding: 0.75rem 1rem;
+    cursor: pointer;
+}
+.search-result-item:hover {
+    background-color: #f3f4f6;
+}
+.print-header {
+    display: none;
+}
+
+/* --- ESTILOS DE IMPRESIÓN PROFESIONALES --- */
+@media print {
+    /* Ocultar elementos no deseados */
+    body > .flex > aside, #page-header, .form-actions,
+    .sesiones-section > form, hr.section-divider, .documentos-section {
+        display: none !important;
+    }
+
+    /* Reseteo y configuración global */
+    body { font-family: Arial, sans-serif; font-size: 10pt; background-color: #fff; color: #000; margin: 0; }
+    main.flex-1 { 
+        overflow: visible !important; 
+        height: auto !important; 
+        padding: 1.5cm; 
+    }
+    
+    /* Cabecera de impresión */
+    .print-header { display: flex !important; justify-content: space-between; align-items: center; border-bottom: 2px solid #333; padding-bottom: 1cm; margin-bottom: 1cm; }
+    .print-header .logo-container img { max-height: 120px; }
+    .print-header .report-details { text-align: right; }
+    .print-header h2 { margin: 0; font-size: 16pt; border: none; }
+    .print-header span { font-size: 9pt; color: #555; }
+
+    /* Estilo de las cajas principales */
+    .receipt-container, .expediente-header, .form-section, .sesion-item {
+        box-shadow: none; border: 1px solid #ccc; padding: 15px; margin-bottom: 0.8cm; page-break-inside: avoid; display: block !important;
+    }
+
+    /* Diseño de dos columnas */
+    .expediente-grid { display: grid !important; grid-template-columns: 1fr 1fr !important; gap: 20px !important; }
+
+    /* Títulos de sección */
+    h2, h3, h4 { color: #000; font-size: 12pt; font-weight: bold; border-bottom: 1px solid #999; padding-bottom: 5px; margin-top: 0.8rem; page-break-after: avoid; }
+
+    /* Ajustes de compactación vertical */
+    .skincare-section + .skincare-section { margin-top: 1rem; }
+    .form-group { margin-bottom: 10px; page-break-inside: avoid; }
+    
+    .form-group label { font-size: 9pt; font-weight: bold; color: #333; margin-bottom: 3px; }
+    .form-group input, .form-group textarea { border: none !important; background-color: transparent !important; padding: 2px 0 !important; color: #000 !important; font-size: 11pt; resize: none; box-shadow: none !important; width: 100%; border-bottom: 1px dotted #888 !important; }
+    .expediente-header .form-group input { border-bottom: none !important; font-size: 12pt; }
+    textarea { overflow: visible; height: auto; }
+    .sesion-item p { font-size: 10pt; }
+
+    /* Estilos específicos para el recibo */
+    .receipt-container a { display: none; }
+}
